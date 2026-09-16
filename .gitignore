@@ -1,0 +1,29 @@
+# Local planning, agent context, machine evidence, and raw diagnostics.
+.local/
+AGENTS.md
+CLAUDE.md
+HANDOFF.md
+WORK_PLAN.md
+*.local.md
+contracts/
+evidence/
+docs/internal/
+
+# Secrets and signing material.
+.env
+.env.*
+*.p8
+*.p12
+*.cer
+*.provisionprofile
+*.key
+Config/*.local.xcconfig
+
+# Build and IDE state.
+.build/
+build/
+dist/
+DerivedData/
+.DS_Store
+xcuserdata/
+*.xcuserstate
