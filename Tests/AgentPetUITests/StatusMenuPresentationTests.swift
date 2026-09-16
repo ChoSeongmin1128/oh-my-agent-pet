@@ -43,15 +43,38 @@ final class StatusMenuPresentationTests: XCTestCase {
     XCTAssertEqual(StatusMenuPresentation.title(for: representative), "Failed · project")
   }
 
+  func testInterruptedTaskShowsStoppedState() {
+    let representative = RepresentativeTask(
+      task: task(work: .stopped, result: .interrupted),
+      reason: .latestPrompt
+    )
+
+    XCTAssertEqual(StatusMenuPresentation.title(for: representative), "Stopped · project")
+  }
+
+  func testProviderAppearsOnlyWhenMultipleProvidersHaveTasks() {
+    let representative = RepresentativeTask(
+      task: task(work: .running, result: .none, provider: "codex"),
+      reason: .latestPrompt
+    )
+
+    XCTAssertEqual(StatusMenuPresentation.title(for: representative), "Working · project")
+    XCTAssertEqual(
+      StatusMenuPresentation.title(for: representative, connectedProviderCount: 2),
+      "Working · project · Codex"
+    )
+  }
+
   private func task(
     work: WorkState,
     result: ResultState,
     waiting: WaitingState = .none,
-    hasUnseenCompletion: Bool = false
+    hasUnseenCompletion: Bool = false,
+    provider: String = "claude"
   ) -> AgentTaskSnapshot {
     AgentTaskSnapshot(
       identity: TaskIdentity(
-        provider: ProviderIdentifier("claude")!,
+        provider: ProviderIdentifier(provider)!,
         profileID: "default",
         dataRoot: "/fixture",
         taskID: "session",

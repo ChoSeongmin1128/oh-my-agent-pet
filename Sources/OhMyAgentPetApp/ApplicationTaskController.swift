@@ -1,4 +1,5 @@
 import AgentPetClaude
+import AgentPetCodex
 import AgentPetProviders
 import AgentPetUI
 import Foundation
@@ -7,7 +8,10 @@ import Foundation
 final class ApplicationTaskController {
   private let statusMenuController: StatusMenuController
   private let coordinator: ProviderCoordinator
-  private var watcher: ClaudeEventLogWatcher?
+  private let codexProvider: CodexTaskProvider
+  private let codexPaths: CodexPaths
+  private var claudeWatcher: ClaudeEventLogWatcher?
+  private var codexWatcher: CodexFileSetWatcher?
   private var refreshInProgress = false
   private var refreshPending = false
 
@@ -17,10 +21,17 @@ final class ApplicationTaskController {
     environment: [String: String]
   ) throws {
     self.statusMenuController = statusMenuController
-    let paths = ClaudePaths(homeDirectory: homeDirectory, environment: environment)
-    let provider = ClaudeTaskProvider(paths: paths)
-    coordinator = try ProviderCoordinator(adapters: [provider])
-    watcher = ClaudeEventLogWatcher(eventsURL: paths.eventsURL) { [weak self] in
+    let claudePaths = ClaudePaths(homeDirectory: homeDirectory, environment: environment)
+    let claudeProvider = ClaudeTaskProvider(paths: claudePaths)
+    codexPaths = CodexPaths(homeDirectory: homeDirectory, environment: environment)
+    codexProvider = CodexTaskProvider(paths: codexPaths)
+    coordinator = try ProviderCoordinator(adapters: [claudeProvider, codexProvider])
+    claudeWatcher = ClaudeEventLogWatcher(eventsURL: claudePaths.eventsURL) { [weak self] in
+      Task { @MainActor [weak self] in
+        self?.requestRefresh()
+      }
+    }
+    codexWatcher = CodexFileSetWatcher { [weak self] in
       Task { @MainActor [weak self] in
         self?.requestRefresh()
       }
@@ -28,12 +39,16 @@ final class ApplicationTaskController {
   }
 
   func start() throws {
-    try watcher?.start()
+    try claudeWatcher?.start()
+    codexWatcher?.start(
+      urls: [codexPaths.dataRoot, codexPaths.sessionsDirectory, codexPaths.sessionIndexURL]
+    )
     requestRefresh()
   }
 
   func stop() {
-    watcher?.stop()
+    claudeWatcher?.stop()
+    codexWatcher?.stop()
   }
 
   private func requestRefresh() {
@@ -46,7 +61,13 @@ final class ApplicationTaskController {
       while self.refreshPending {
         self.refreshPending = false
         let report = await self.coordinator.refresh()
-        self.statusMenuController.update(representative: report.representative)
+        let watchedURLs = await self.codexProvider.watchedURLs()
+        self.codexWatcher?.update(urls: watchedURLs)
+        let connectedProviderCount = Set(report.tasks.map(\.identity.provider)).count
+        self.statusMenuController.update(
+          representative: report.representative,
+          connectedProviderCount: connectedProviderCount
+        )
       }
       self.refreshInProgress = false
     }

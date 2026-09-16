@@ -10,6 +10,7 @@ public enum ResultState: String, Codable, Hashable, Sendable {
   case none
   case completed
   case failed
+  case interrupted
   case unknown
 }
 
