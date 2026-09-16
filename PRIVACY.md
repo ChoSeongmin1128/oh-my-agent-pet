@@ -26,10 +26,11 @@ An export creates local Markdown and JSONL files after showing what they contain
 
 The app may access the network for these purposes:
 
-- Checking the fixed GitHub Releases endpoint for an update
+- Fetching the signed update feed and release notes
+- Downloading a signed update archive after the user chooses to install it or enables automatic downloads
 - Downloading a pet after an explicit user action
 
-Update requests contain no product-specific user identifier. Automatic update checks can be disabled.
+Update requests contain no product-specific user identifier, custom tracking parameter, or system profile. Automatic update checks and automatic downloads can be disabled independently.
 
 ## Permissions
 

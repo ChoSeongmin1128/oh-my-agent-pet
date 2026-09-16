@@ -13,6 +13,7 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 - Claude만 사용하는 구성 지원
 - 사용자 펫과 Codex 호환 펫 포맷 지원
 - 로컬 진단 창과 명시적인 진단 자료 내보내기
+- 서명된 앱 내 업데이트 확인과 설치
 
 지원 예정 환경은 macOS 14 이상입니다.
 
@@ -27,6 +28,12 @@ brew install --cask choseongmin1128/tap/oh-my-agent-pet
 서명되고 Apple notarization을 통과한 DMG도 GitHub Releases에서 제공합니다. 움직이는 `main` 브랜치나 `curl | sh` 설치는 지원하지 않습니다.
 
 CLI 이름은 `omapet`입니다.
+
+## 업데이트
+
+앱은 서명된 업데이트 피드를 확인하고 새 버전과 릴리스 노트를 표시합니다. 업데이트 설치는 사용자가 선택할 때 진행하며, 자동 확인은 설정에서 끌 수 있습니다. beta 버전은 명시적으로 채널을 선택한 사용자에게만 표시합니다.
+
+Homebrew Cask도 앱이 자체 업데이트할 수 있는 패키지로 표시합니다. Homebrew로 직접 갱신하는 경로도 함께 제공합니다.
 
 ## 개인정보
 
