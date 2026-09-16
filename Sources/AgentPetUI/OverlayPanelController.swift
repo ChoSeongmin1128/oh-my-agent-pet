@@ -1,4 +1,5 @@
 import AgentPetCore
+import AgentPetSprites
 import AppKit
 
 public struct OverlayMenuState: Equatable, Sendable {
@@ -61,6 +62,10 @@ public final class OverlayPanelController {
     publishState()
   }
 
+  public func setPetPackage(_ package: PetSpritePackage?) {
+    contentView.setSpritePackage(package)
+  }
+
   public func update(tasks: [AgentTaskSnapshot], representative: RepresentativeTask?) {
     self.tasks = tasks
     self.representative = representative
@@ -86,6 +91,7 @@ public final class OverlayPanelController {
   }
 
   public func stop() {
+    contentView.setAnimationsActive(false)
     panel.orderOut(nil)
   }
 
@@ -124,6 +130,7 @@ public final class OverlayPanelController {
   }
 
   private func applyVisibility() {
+    contentView.setAnimationsActive(preferences.isVisible)
     if preferences.isVisible {
       panel.orderFrontRegardless()
     } else {

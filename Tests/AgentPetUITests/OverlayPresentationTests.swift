@@ -1,7 +1,9 @@
 import AgentPetCore
-import AgentPetUI
+import AgentPetSprites
 import Foundation
 import XCTest
+
+@testable import AgentPetUI
 
 final class OverlayPresentationTests: XCTestCase {
   func testOneModeShowsRepresentativeAndCountsOtherInterventionTasks() throws {
@@ -89,6 +91,15 @@ final class OverlayPresentationTests: XCTestCase {
     XCTAssertEqual(resolver.resolve(distance: 5, duration: 0.1), .drag)
     XCTAssertEqual(resolver.resolve(distance: 1, duration: 0.35), .hold)
     XCTAssertEqual(resolver.resolve(distance: 7, duration: 1), .drag)
+  }
+
+  func testTaskStatusMapsToCompatiblePetAnimationWithoutTreatingStopAsFailure() {
+    XCTAssertEqual(TaskVisualStatus.inputNeeded.petAnimationState, .waiting)
+    XCTAssertEqual(TaskVisualStatus.working.petAnimationState, .running)
+    XCTAssertEqual(TaskVisualStatus.finished.petAnimationState, .review)
+    XCTAssertEqual(TaskVisualStatus.failed.petAnimationState, .failed)
+    XCTAssertEqual(TaskVisualStatus.stopped.petAnimationState, .idle)
+    XCTAssertEqual(TaskVisualStatus.ready.petAnimationState, .idle)
   }
 
   private func task(
