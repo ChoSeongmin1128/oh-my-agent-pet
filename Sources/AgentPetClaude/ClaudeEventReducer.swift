@@ -23,6 +23,7 @@ public struct ClaudeEventReducer: Sendable {
   }
 
   public mutating func apply(_ event: StoredClaudeHookEvent) {
+    guard event.provider == .claude else { return }
     guard appliedRecords.insert(event.recordID).inserted else {
       return
     }

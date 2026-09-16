@@ -1,4 +1,6 @@
 import AgentPetClaude
+import AgentPetCodex
+import AgentPetEvents
 import Foundation
 
 public enum OmapetCommand: Equatable, Sendable {
@@ -6,9 +8,13 @@ public enum OmapetCommand: Equatable, Sendable {
   case version(json: Bool)
   case doctor(json: Bool)
   case setupStatus(json: Bool)
+  case setupStatusCodex(json: Bool)
   case setupConnectClaude(json: Bool, dryRun: Bool)
   case setupDisconnectClaude(json: Bool, dryRun: Bool)
+  case setupConnectCodex(json: Bool, dryRun: Bool)
+  case setupDisconnectCodex(json: Bool, dryRun: Bool)
   case hookClaude
+  case hookCodex
 }
 
 public struct OmapetCommandResult: Equatable, Sendable {
@@ -25,10 +31,12 @@ public struct OmapetCommandResult: Equatable, Sendable {
 
 public struct OmapetCommandRunner: Sendable {
   public static let version = "0.0.0-dev"
-  public static let maximumHookInputBytes = ClaudeHookRecorder.maximumInputBytes
+  public static let maximumHookInputBytes = AgentHookRecorder.maximumInputBytes
 
-  private let setupService: ClaudeSetupService
-  private let hookRecorder: ClaudeHookRecorder
+  private let claudeSetupService: ClaudeSetupService
+  private let codexSetupService: CodexSetupService
+  private let claudeHookRecorder: AgentHookRecorder
+  private let codexHookRecorder: AgentHookRecorder
 
   public init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -44,13 +52,24 @@ public struct OmapetCommandRunner: Sendable {
       executableURL
       ?? URL(fileURLWithPath: CommandLine.arguments.first ?? "omapet")
     let paths = ClaudePaths(homeDirectory: resolvedHome, environment: environment)
-    setupService = ClaudeSetupService(
+    claudeSetupService = ClaudeSetupService(
       homeDirectory: resolvedHome,
       environment: environment,
       executableURL: resolvedExecutable,
       now: now
     )
-    hookRecorder = ClaudeHookRecorder(
+    codexSetupService = CodexSetupService(
+      homeDirectory: resolvedHome,
+      environment: environment,
+      executableURL: resolvedExecutable,
+      now: now
+    )
+    claudeHookRecorder = AgentHookRecorder(
+      provider: .claude,
+      applicationSupportDirectory: paths.applicationSupportDirectory
+    )
+    codexHookRecorder = AgentHookRecorder(
+      provider: .codex,
       applicationSupportDirectory: paths.applicationSupportDirectory
     )
   }
@@ -93,12 +112,22 @@ public struct OmapetCommandRunner: Sendable {
       return .doctor(json: json)
     case ["setup", "status"] where !dryRun:
       return .setupStatus(json: json)
+    case ["setup", "status", "claude"] where !dryRun:
+      return .setupStatus(json: json)
+    case ["setup", "status", "codex"] where !dryRun:
+      return .setupStatusCodex(json: json)
     case ["setup", "connect", "claude"]:
       return .setupConnectClaude(json: json, dryRun: dryRun)
     case ["setup", "disconnect", "claude"]:
       return .setupDisconnectClaude(json: json, dryRun: dryRun)
+    case ["setup", "connect", "codex"]:
+      return .setupConnectCodex(json: json, dryRun: dryRun)
+    case ["setup", "disconnect", "codex"]:
+      return .setupDisconnectCodex(json: json, dryRun: dryRun)
     case ["hook", "claude"] where !json && !dryRun:
       return .hookClaude
+    case ["hook", "codex"] where !json && !dryRun:
+      return .hookCodex
     default:
       throw OmapetCLIError.unsupportedArguments(positional)
     }
@@ -131,7 +160,7 @@ public struct OmapetCommandRunner: Sendable {
       )
     case .setupStatus(let json):
       do {
-        let status = try setupService.status()
+        let status = try claudeSetupService.status()
         if json {
           return jsonResult(status)
         }
@@ -142,22 +171,50 @@ public struct OmapetCommandRunner: Sendable {
       } catch {
         return setupErrorResult(error, json: json)
       }
+    case .setupStatusCodex(let json):
+      do {
+        let status = try codexSetupService.status()
+        if json { return jsonResult(status) }
+        return OmapetCommandResult(
+          exitCode: 0,
+          standardOutput: "Codex: \(status.status.rawValue)\n"
+        )
+      } catch {
+        return setupErrorResult(error, json: json)
+      }
     case .setupConnectClaude(let json, let dryRun):
       do {
-        let change = try setupService.connect(dryRun: dryRun)
+        let change = try claudeSetupService.connect(dryRun: dryRun)
         return setupChangeResult(change, json: json)
       } catch {
         return setupErrorResult(error, json: json)
       }
     case .setupDisconnectClaude(let json, let dryRun):
       do {
-        let change = try setupService.disconnect(dryRun: dryRun)
+        let change = try claudeSetupService.disconnect(dryRun: dryRun)
         return setupChangeResult(change, json: json)
       } catch {
         return setupErrorResult(error, json: json)
       }
+    case .setupConnectCodex(let json, let dryRun):
+      do {
+        let change = try codexSetupService.connect(dryRun: dryRun)
+        return codexSetupChangeResult(change, json: json)
+      } catch {
+        return setupErrorResult(error, json: json)
+      }
+    case .setupDisconnectCodex(let json, let dryRun):
+      do {
+        let change = try codexSetupService.disconnect(dryRun: dryRun)
+        return codexSetupChangeResult(change, json: json)
+      } catch {
+        return setupErrorResult(error, json: json)
+      }
     case .hookClaude:
-      _ = try? hookRecorder.record(input: standardInput)
+      _ = try? claudeHookRecorder.record(input: standardInput)
+      return OmapetCommandResult(exitCode: 0)
+    case .hookCodex:
+      _ = try? codexHookRecorder.record(input: standardInput)
       return OmapetCommandResult(exitCode: 0)
     }
   }
@@ -171,6 +228,17 @@ public struct OmapetCommandRunner: Sendable {
     if let backupPath = change.backupPath {
       output += "Backup: \(backupPath)\n"
     }
+    return OmapetCommandResult(exitCode: 0, standardOutput: output)
+  }
+
+  private func codexSetupChangeResult(
+    _ change: CodexSetupChange,
+    json: Bool
+  ) -> OmapetCommandResult {
+    if json { return jsonResult(change) }
+    let mode = change.dryRun ? "dry-run" : (change.changed ? "changed" : "unchanged")
+    var output = "Codex: \(change.status.rawValue) (\(mode))\n"
+    if let backupPath = change.backupPath { output += "Backup: \(backupPath)\n" }
     return OmapetCommandResult(exitCode: 0, standardOutput: output)
   }
 
@@ -207,8 +275,11 @@ public struct OmapetCommandRunner: Sendable {
       omapet version [--json]
       omapet doctor [--json]
       omapet setup status [--json]
+      omapet setup status codex [--json]
       omapet setup connect claude [--dry-run] [--json]
       omapet setup disconnect claude [--dry-run] [--json]
+      omapet setup connect codex [--dry-run] [--json]
+      omapet setup disconnect codex [--dry-run] [--json]
 
     """
 }
@@ -252,24 +323,39 @@ private struct SetupErrorOutput: Encodable {
 
   init(error: Error) {
     switch error {
-    case ClaudeSetupServiceError.executableMissing:
+    case ClaudeSetupServiceError.executableMissing,
+      CodexSetupServiceError.executableMissing:
       code = "executable_missing"
       exitCode = 69
-    case ClaudeSetupServiceError.unsafeSettingsTarget:
+    case CodexSetupServiceError.codexUnavailable:
+      code = "codex_unavailable"
+      exitCode = 69
+    case ClaudeSetupServiceError.unsafeSettingsTarget,
+      CodexSetupServiceError.unsafeHooksTarget:
       code = "unsafe_settings_target"
       exitCode = 73
-    case ClaudeSetupServiceError.configuration:
+    case ClaudeSetupServiceError.configuration,
+      CodexSetupServiceError.configuration:
       code = "invalid_configuration"
       exitCode = 65
-    case ClaudeSetupServiceError.readFailed:
+    case ClaudeSetupServiceError.readFailed,
+      CodexSetupServiceError.readFailed:
       code = "settings_read_failed"
       exitCode = 74
-    case ClaudeSetupServiceError.backupFailed:
+    case ClaudeSetupServiceError.backupFailed,
+      CodexSetupServiceError.backupFailed:
       code = "settings_backup_failed"
       exitCode = 74
-    case ClaudeSetupServiceError.concurrentModification:
+    case ClaudeSetupServiceError.concurrentModification,
+      CodexSetupServiceError.concurrentModification:
       code = "settings_changed"
       exitCode = 75
+    case CodexSetupServiceError.trustFailed:
+      code = "codex_trust_failed"
+      exitCode = 74
+    case CodexSetupServiceError.rollbackFailed:
+      code = "rollback_failed"
+      exitCode = 74
     default:
       code = "settings_write_failed"
       exitCode = 74

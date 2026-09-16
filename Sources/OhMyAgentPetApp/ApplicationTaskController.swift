@@ -1,5 +1,6 @@
 import AgentPetClaude
 import AgentPetCodex
+import AgentPetEvents
 import AgentPetProviders
 import AgentPetUI
 import Foundation
@@ -10,7 +11,7 @@ final class ApplicationTaskController {
   private let coordinator: ProviderCoordinator
   private let codexProvider: CodexTaskProvider
   private let codexPaths: CodexPaths
-  private var claudeWatcher: ClaudeEventLogWatcher?
+  private var eventWatcher: AgentEventLogWatcher?
   private var codexWatcher: CodexFileSetWatcher?
   private var refreshInProgress = false
   private var refreshPending = false
@@ -26,7 +27,7 @@ final class ApplicationTaskController {
     codexPaths = CodexPaths(homeDirectory: homeDirectory, environment: environment)
     codexProvider = CodexTaskProvider(paths: codexPaths)
     coordinator = try ProviderCoordinator(adapters: [claudeProvider, codexProvider])
-    claudeWatcher = ClaudeEventLogWatcher(eventsURL: claudePaths.eventsURL) { [weak self] in
+    eventWatcher = AgentEventLogWatcher(eventsURL: claudePaths.eventsURL) { [weak self] in
       Task { @MainActor [weak self] in
         self?.requestRefresh()
       }
@@ -39,7 +40,7 @@ final class ApplicationTaskController {
   }
 
   func start() throws {
-    try claudeWatcher?.start()
+    try eventWatcher?.start()
     codexWatcher?.start(
       urls: [codexPaths.dataRoot, codexPaths.sessionsDirectory, codexPaths.sessionIndexURL]
     )
@@ -47,7 +48,7 @@ final class ApplicationTaskController {
   }
 
   func stop() {
-    claudeWatcher?.stop()
+    eventWatcher?.stop()
     codexWatcher?.stop()
   }
 
