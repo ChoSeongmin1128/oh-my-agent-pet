@@ -74,6 +74,49 @@ final class RepresentativeTaskSelectorTests: XCTestCase {
     XCTAssertNil(RepresentativeTaskSelector().select(from: []))
   }
 
+  func testFullPresentationOrderMatchesRepresentativePolicy() {
+    let base = Date(timeIntervalSince1970: 1_000)
+    let tasks = [
+      task(
+        id: "older-prompt",
+        waiting: .none,
+        prompt: base.addingTimeInterval(10),
+        intervention: nil,
+        updated: base.addingTimeInterval(100)
+      ),
+      task(
+        id: "newer-intervention",
+        waiting: .user(.answer),
+        prompt: base,
+        intervention: base.addingTimeInterval(30),
+        updated: base.addingTimeInterval(30)
+      ),
+      task(
+        id: "older-intervention",
+        waiting: .user(.approval),
+        prompt: base,
+        intervention: base.addingTimeInterval(20),
+        updated: base.addingTimeInterval(20)
+      ),
+      task(
+        id: "newer-prompt",
+        waiting: .none,
+        prompt: base.addingTimeInterval(40),
+        intervention: nil,
+        updated: base.addingTimeInterval(40)
+      ),
+    ]
+
+    XCTAssertEqual(
+      TaskPresentationOrder().sorted(tasks).map(\.identity.taskID),
+      ["newer-intervention", "older-intervention", "newer-prompt", "older-prompt"]
+    )
+    XCTAssertEqual(
+      RepresentativeTaskSelector().select(from: tasks)?.task.identity.taskID,
+      "newer-intervention"
+    )
+  }
+
   private func task(
     id: String,
     waiting: WaitingState,

@@ -5,11 +5,14 @@ import Foundation
 @MainActor
 private final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusMenuController: StatusMenuController?
+  private var overlayController: OverlayPanelController?
   private var taskController: ApplicationTaskController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let statusMenuController = StatusMenuController()
+    let overlayController = OverlayPanelController()
     self.statusMenuController = statusMenuController
+    self.overlayController = overlayController
 
     let environment = ProcessInfo.processInfo.environment
     let homeDirectory =
@@ -18,6 +21,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     do {
       let taskController = try ApplicationTaskController(
         statusMenuController: statusMenuController,
+        overlayController: overlayController,
         homeDirectory: homeDirectory,
         environment: environment
       )

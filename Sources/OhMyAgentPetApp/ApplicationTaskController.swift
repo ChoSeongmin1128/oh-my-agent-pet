@@ -10,6 +10,7 @@ import Foundation
 @MainActor
 final class ApplicationTaskController {
   private let statusMenuController: StatusMenuController
+  private let overlayController: OverlayPanelController
   private let coordinator: ProviderCoordinator
   private let codexProvider: CodexTaskProvider
   private let codexPaths: CodexPaths
@@ -22,10 +23,12 @@ final class ApplicationTaskController {
 
   init(
     statusMenuController: StatusMenuController,
+    overlayController: OverlayPanelController,
     homeDirectory: URL,
     environment: [String: String]
   ) throws {
     self.statusMenuController = statusMenuController
+    self.overlayController = overlayController
     let claudePaths = ClaudePaths(homeDirectory: homeDirectory, environment: environment)
     claudeDesktopSessionsDirectory = claudePaths.desktopSessionsDirectory
     navigator = TaskNavigator()
@@ -46,6 +49,15 @@ final class ApplicationTaskController {
     statusMenuController.setOpenTaskHandler { [weak self] task in
       self?.open(task)
     }
+    statusMenuController.setOverlayControlHandler { [weak overlayController] action in
+      overlayController?.handle(action)
+    }
+    overlayController.setOpenTaskHandler { [weak self] task in
+      self?.open(task)
+    }
+    overlayController.setStateHandler { [weak statusMenuController] state in
+      statusMenuController?.updateOverlayState(state)
+    }
   }
 
   func start() throws {
@@ -65,6 +77,7 @@ final class ApplicationTaskController {
   func stop() {
     eventWatcher?.stop()
     codexWatcher?.stop()
+    overlayController.stop()
   }
 
   private func requestRefresh() {
@@ -85,6 +98,10 @@ final class ApplicationTaskController {
         self.statusMenuController.update(
           representative: report.representative,
           connectedProviderCount: connectedProviderCount
+        )
+        self.overlayController.update(
+          tasks: report.tasks,
+          representative: report.representative
         )
       }
       self.refreshInProgress = false
