@@ -10,10 +10,11 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 - Claude Code 연결 상태 확인, dry-run, 연결과 연결 해제
 - 프롬프트 본문과 도구 입출력을 제외한 최소 hook 이벤트의 로컬 기록
 - 앱 시작 시 기존 Claude 이벤트 재생과 이후 변경의 실시간 감지
+- Codex 설정을 바꾸지 않는 session index·rollout 읽기와 실행 중 변경 감지
 - 입력 필요, 작업 중, 완료와 실패를 대표 작업 메뉴 상태로 표시
 - Apple Silicon과 Intel을 함께 검증하는 GitHub Actions CI
 
-현재 소스 코드는 앱 기반과 Claude 상태 관찰 경로까지 구현한 개발 버전입니다. 펫과 카드 화면, 정확한 작업 이동, Codex 연동, 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
+현재 소스 코드는 앱 기반과 Claude·Codex 상태 관찰 경로까지 구현한 개발 버전입니다. Codex hook 연결, 펫과 카드 화면, 정확한 작업 이동, 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
 
 ## 목표 기능
 

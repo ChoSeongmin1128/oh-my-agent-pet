@@ -2,25 +2,42 @@ import AgentPetCore
 import AppKit
 
 public enum StatusMenuPresentation {
-  public static func title(for representative: RepresentativeTask?) -> String {
+  public static func title(
+    for representative: RepresentativeTask?,
+    connectedProviderCount: Int = 1
+  ) -> String {
     guard let representative else {
       return "No connected tasks"
     }
 
-    if representative.reason == .intervention {
-      return "Input needed · \(representative.task.title)"
-    }
-
     let prefix: String
-    switch representative.task.result {
-    case .failed:
-      prefix = "Failed"
-    case .completed where representative.task.hasUnseenCompletion:
-      prefix = "Finished"
-    default:
-      prefix = representative.task.work == .running ? "Working" : "Ready"
+    if representative.reason == .intervention {
+      prefix = "Input needed"
+    } else {
+      switch representative.task.result {
+      case .failed:
+        prefix = "Failed"
+      case .interrupted:
+        prefix = "Stopped"
+      case .completed where representative.task.hasUnseenCompletion:
+        prefix = "Finished"
+      default:
+        prefix = representative.task.work == .running ? "Working" : "Ready"
+      }
     }
-    return "\(prefix) · \(representative.task.title)"
+    var parts = [prefix, representative.task.title]
+    if connectedProviderCount > 1 {
+      parts.append(providerLabel(representative.task.identity.provider))
+    }
+    return parts.joined(separator: " · ")
+  }
+
+  private static func providerLabel(_ provider: ProviderIdentifier) -> String {
+    switch provider.rawValue {
+    case "claude": "Claude"
+    case "codex": "Codex"
+    default: provider.rawValue
+    }
   }
 }
 
@@ -36,8 +53,14 @@ public final class StatusMenuController: NSObject {
     configureMenu()
   }
 
-  public func update(representative: RepresentativeTask?) {
-    statusRow.title = StatusMenuPresentation.title(for: representative)
+  public func update(
+    representative: RepresentativeTask?,
+    connectedProviderCount: Int = 1
+  ) {
+    statusRow.title = StatusMenuPresentation.title(
+      for: representative,
+      connectedProviderCount: connectedProviderCount
+    )
   }
 
   private func configureButton() {
