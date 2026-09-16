@@ -57,6 +57,7 @@ final class ClaudeHookRecorderTests: XCTestCase {
       Set(storedObject.keys),
       [
         "schema_version",
+        "provider",
         "record_id",
         "received_at_ms",
         "hook_event_name",

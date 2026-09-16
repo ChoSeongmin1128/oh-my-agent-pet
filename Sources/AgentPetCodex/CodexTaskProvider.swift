@@ -1,10 +1,12 @@
 import AgentPetCore
+import AgentPetEvents
 import AgentPetProviders
 import Foundation
 
 public enum CodexProviderIssue: Equatable, Sendable {
   case sessionIndex(CodexSessionIndexIssue)
   case rollout(CodexRolloutIssue)
+  case hookEvent(AgentEventLogIssue)
   case catalog
 }
 
@@ -17,6 +19,8 @@ public actor CodexTaskProvider: TaskProviderAdapter {
   private let paths: CodexPaths
   private let maximumSessions: Int
   private var indexReader: CodexSessionIndexReader
+  private var eventReader: AgentEventLogReader
+  private var hookOverlay = CodexHookOverlayReducer()
   private var trackers: [String: CodexRolloutTracker] = [:]
   private var watchDirectories: [URL] = []
   private var issues: [CodexProviderIssue] = []
@@ -29,9 +33,22 @@ public actor CodexTaskProvider: TaskProviderAdapter {
     self.paths = paths
     self.maximumSessions = max(1, maximumSessions)
     indexReader = CodexSessionIndexReader(indexURL: paths.sessionIndexURL)
+    eventReader = AgentEventLogReader(eventsURL: paths.eventsURL)
   }
 
   public func loadTasks() async throws -> [AgentTaskSnapshot] {
+    while true {
+      let batch = try eventReader.readAvailable()
+      if batch.didReset {
+        hookOverlay.reset()
+      }
+      for event in batch.events {
+        hookOverlay.apply(event)
+      }
+      appendIssues(batch.issues.map(CodexProviderIssue.hookEvent))
+      if batch.reachedEnd { break }
+    }
+
     let index = try indexReader.readIfChanged()
     if index.didChange {
       appendIssues(index.issues.map(CodexProviderIssue.sessionIndex))
@@ -63,7 +80,7 @@ public actor CodexTaskProvider: TaskProviderAdapter {
       trackers[sessionID] = tracker
       appendIssues(refresh.issues.map(CodexProviderIssue.rollout))
       if let snapshot = refresh.snapshot {
-        snapshots.append(snapshot)
+        snapshots.append(hookOverlay.applying(to: snapshot))
       }
     }
     return snapshots.sorted { $0.identity.stableKey < $1.identity.stableKey }

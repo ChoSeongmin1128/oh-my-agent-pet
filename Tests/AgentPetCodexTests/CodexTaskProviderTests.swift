@@ -1,5 +1,6 @@
 import AgentPetCodex
 import AgentPetCore
+import AgentPetEvents
 import Foundation
 import XCTest
 
@@ -117,6 +118,54 @@ final class CodexTaskProviderTests: XCTestCase {
     XCTAssertEqual(tasks.map(\.title), ["After"])
   }
 
+  func testPermissionRequestOverlaysWaitingUntilSameTurnContinues() async throws {
+    let home = temporaryDirectory()
+    let paths = CodexPaths(homeDirectory: home, environment: [:])
+    let day = paths.sessionsDirectory.appendingPathComponent("2026/09/16", isDirectory: true)
+    try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: paths.applicationSupportDirectory,
+      withIntermediateDirectories: true
+    )
+    try index([(uuid(1), "Waiting", 1)]).write(to: paths.sessionIndexURL)
+    try rollout(session: 1, state: "task_started").write(
+      to: rolloutURL(day: day, session: 1)
+    )
+    try event(id: 1, name: "PermissionRequest", turn: "turn-1", second: 2).write(
+      to: paths.eventsURL
+    )
+    let provider = CodexTaskProvider(paths: paths)
+
+    let waiting = try await provider.loadTasks().first
+    XCTAssertEqual(waiting?.waiting, .user(.approval))
+
+    try append(event(id: 2, name: "PreToolUse", turn: "turn-1", second: 3), to: paths.eventsURL)
+    let resumed = try await provider.loadTasks().first
+    XCTAssertEqual(resumed?.waiting, WaitingState.none)
+  }
+
+  func testPermissionFromPreviousTurnDoesNotOverlayCurrentTurn() async throws {
+    let home = temporaryDirectory()
+    let paths = CodexPaths(homeDirectory: home, environment: [:])
+    let day = paths.sessionsDirectory.appendingPathComponent("2026/09/16", isDirectory: true)
+    try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: paths.applicationSupportDirectory,
+      withIntermediateDirectories: true
+    )
+    try index([(uuid(1), "Current", 1)]).write(to: paths.sessionIndexURL)
+    try rollout(session: 1, state: "task_started").write(
+      to: rolloutURL(day: day, session: 1)
+    )
+    try event(id: 1, name: "PermissionRequest", turn: "old-turn", second: 2).write(
+      to: paths.eventsURL
+    )
+
+    let task = try await CodexTaskProvider(paths: paths).loadTasks().first
+
+    XCTAssertEqual(task?.waiting, WaitingState.none)
+  }
+
   private func index(_ rows: [(String, String, Int)]) -> Data {
     rows.reduce(into: Data()) { data, row in
       data.append(
@@ -144,6 +193,27 @@ final class CodexTaskProviderTests: XCTestCase {
       "{\"timestamp\":\"2026-09-16T10:00:\(String(format: "%02d", second))Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"\(type)\",\"turn_id\":\"\(turn)\"}}\n"
         .utf8
     )
+  }
+
+  private func event(id: Int, name: String, turn: String, second: Int) throws -> Data {
+    let timestamp = ISO8601DateFormatter().date(
+      from: "2026-09-16T10:00:\(String(format: "%02d", second))Z"
+    )!
+    let event = StoredAgentHookEvent(
+      recordID: UUID(uuidString: String(format: "10000000-0000-0000-0000-%012d", id))!,
+      receivedAtMilliseconds: Int64(timestamp.timeIntervalSince1970 * 1_000),
+      provider: .codex,
+      hookEventName: name,
+      sessionID: uuid(1),
+      turnID: turn,
+      cwd: "/tmp/project-1",
+      source: nil,
+      notificationType: nil,
+      toolName: "Bash"
+    )
+    var data = try JSONEncoder().encode(event)
+    data.append(0x0A)
+    return data
   }
 
   private func rolloutURL(day: URL, session: Int) -> URL {

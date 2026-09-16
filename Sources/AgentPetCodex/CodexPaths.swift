@@ -4,11 +4,16 @@ public struct CodexPaths: Sendable {
   public let dataRoot: URL
   public let sessionsDirectory: URL
   public let sessionIndexURL: URL
+  public let applicationSupportDirectory: URL
+  public let eventsURL: URL
 
   public init(homeDirectory: URL, environment: [String: String]) {
     dataRoot = Self.dataRoot(homeDirectory: homeDirectory, environment: environment)
     sessionsDirectory = dataRoot.appendingPathComponent("sessions", isDirectory: true)
     sessionIndexURL = dataRoot.appendingPathComponent("session_index.jsonl")
+    applicationSupportDirectory = homeDirectory.appendingPathComponent(
+      "Library/Application Support/Oh My Agent Pet", isDirectory: true)
+    eventsURL = applicationSupportDirectory.appendingPathComponent("events.ndjson")
   }
 
   private static func dataRoot(

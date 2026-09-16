@@ -123,6 +123,43 @@ final class OmapetCommandRunnerTests: XCTestCase {
     XCTAssertEqual(invalid, OmapetCommandResult(exitCode: 0))
     XCTAssertFalse(stored.contains("secret"))
   }
+
+  func testCodexHookCommandStoresProviderAndTurnInSharedEventLog() throws {
+    let fixture = try CLIFixture()
+    defer { fixture.remove() }
+    let payload = Data(
+      #"{"hook_event_name":"PermissionRequest","session_id":"session","turn_id":"turn-1","cwd":"/tmp","prompt":"secret"}"#
+        .utf8
+    )
+
+    let result = fixture.runner.run(arguments: ["hook", "codex"], standardInput: payload)
+    let eventsURL = fixture.home.appendingPathComponent(
+      "Library/Application Support/Oh My Agent Pet/events.ndjson"
+    )
+    let stored = try String(contentsOf: eventsURL, encoding: .utf8)
+
+    XCTAssertEqual(result, OmapetCommandResult(exitCode: 0))
+    XCTAssertTrue(stored.contains(#""provider":"codex""#))
+    XCTAssertTrue(stored.contains(#""turn_id":"turn-1""#))
+    XCTAssertFalse(stored.contains("secret"))
+  }
+
+  func testCodexSetupStatusAndDryRunNeedNoCodexMutation() throws {
+    let fixture = try CLIFixture()
+    defer { fixture.remove() }
+
+    let status = fixture.runner.run(arguments: ["setup", "status", "codex", "--json"])
+    let dryRun = fixture.runner.run(arguments: [
+      "setup", "connect", "codex", "--dry-run", "--json",
+    ])
+    let hooksURL = fixture.home.appendingPathComponent(".codex/hooks.json")
+
+    XCTAssertEqual(status.exitCode, 0)
+    XCTAssertTrue(status.standardOutput.contains(#""status":"not_configured""#))
+    XCTAssertEqual(dryRun.exitCode, 0)
+    XCTAssertTrue(dryRun.standardOutput.contains(#""trusted_hook_count":8"#))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: hooksURL.path))
+  }
 }
 
 private struct CLIFixture {

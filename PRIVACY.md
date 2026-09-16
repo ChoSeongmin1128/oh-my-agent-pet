@@ -2,7 +2,7 @@
 
 Oh My Agent Pet is designed to observe local agent-task state and navigate back to the corresponding local task without collecting the contents of your work.
 
-There is no installable release yet. This document describes the implemented Claude hook data boundary and the privacy contract for first-release features that are still in development.
+There is no installable release yet. This document describes the implemented Claude and Codex hook data boundary and the privacy contract for first-release features that are still in development.
 
 ## Data the app does not collect
 
@@ -16,9 +16,9 @@ There is no installable release yet. This document describes the implemented Cla
 
 The app stores only the minimum local metadata needed for task identity, status, navigation, preferences, downloaded pets, and the small unseen-result indicator. User data is stored under the app's Application Support and preferences domains.
 
-When Claude Code is connected, the local hook records only its event type, session identifier, working directory, receive time, and limited state labels such as source, notification type, and tool name. It does not store the transcript path, prompt, permission mode, tool input or output, notification message, error details, or assistant response. Hook events are appended to a local file readable only by the user account.
+When Claude Code or Codex is connected, the local hook records only the provider, event type, session and optional turn identifier, working directory, receive time, and limited state labels such as source, notification type, and tool name. It does not store the transcript path, prompt, permission mode, tool input or output, notification message, error details, or assistant response. Hook events are appended to a local file readable only by the user account. Existing schema-1 Claude records remain readable after the shared schema-2 migration.
 
-For Codex, the app reads local session-index titles plus rollout session identity, working directory, and only the structural lifecycle fields needed to distinguish a started, completed, or interrupted turn. It does not decode or copy user messages, agent responses, tool contents, or reasoning records. Read-only Codex observation does not modify `config.toml`, `hooks.json`, rollout files, or the session index.
+For Codex, the app reads local session-index titles plus rollout session identity, working directory, and only the structural lifecycle fields needed to distinguish a started, completed, or interrupted turn. It does not decode or copy user messages, agent responses, tool contents, or reasoning records. Connecting Codex through Settings or `omapet setup connect codex` adds marked command hooks to `hooks.json` and stores only their exact current trust hashes under `hooks.state` in `config.toml`. Disconnecting removes those marked hooks and trust entries. Rollout files and the session index remain read-only.
 
 Optional card fields that are disabled do not trigger their additional parsing, requests, subscriptions, or UI timers.
 
