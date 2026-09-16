@@ -57,8 +57,10 @@ final class TaskNavigationPlannerTests: XCTestCase {
     else { return XCTFail("Expected iTerm reveal URL") }
 
     XCTAssertEqual(fallback, "com.googlecode.iterm2")
-    XCTAssertEqual(url.scheme, "iterm2")
-    XCTAssertEqual(url.path, "reveal")
+    XCTAssertEqual(
+      url.absoluteString,
+      "iterm2:reveal?sessionid=w0t1p0:11111111-1111-1111-1111-111111111111"
+    )
     XCTAssertEqual(
       URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value,
       target.terminalSessionID
