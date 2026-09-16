@@ -1,5 +1,25 @@
 import AgentPetCore
+import AgentPetSprites
 import AppKit
+
+private final class GazeRefreshGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var isPending = false
+
+  func begin() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !isPending else { return false }
+    isPending = true
+    return true
+  }
+
+  func end() {
+    lock.lock()
+    isPending = false
+    lock.unlock()
+  }
+}
 
 @MainActor
 class OverlayInteractionView: NSView {
@@ -58,14 +78,57 @@ final class PetView: OverlayInteractionView {
   private var interventionCount = 0
   private var showsCompletionDot = false
   private var canExpand = false
+  private var spritePackage: PetSpritePackage?
+  private var spriteImages: [Int: NSImage] = [:]
+  private var animationState = PetAnimationState.idle
+  private var animationTimeline = PetAnimationTimeline(state: .idle, reducedMotion: false)
+  private var animationStartedAt = ProcessInfo.processInfo.systemUptime
+  private var animationTimer: Timer?
+  private var currentAnimationFrame: PetAnimationFrame?
+  private var gazePose: PetGazePose?
+  private var globalMouseMonitor: Any?
+  private var localMouseMonitor: Any?
+  private let gazeRefreshGate = GazeRefreshGate()
+  private var animationsActive = true
+  private var reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
     setAccessibilityElement(true)
     setAccessibilityRole(.button)
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self,
+      selector: #selector(accessibilityDisplayOptionsDidChange),
+      name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+      object: nil
+    )
   }
 
   required init?(coder: NSCoder) { nil }
+
+  func setSpritePackage(_ package: PetSpritePackage?) {
+    guard spritePackage !== package else { return }
+    spritePackage = package
+    spriteImages.removeAll(keepingCapacity: false)
+    updateGazeMonitoring()
+    refreshGaze()
+    restartAnimation()
+  }
+
+  func setAnimationsActive(_ isActive: Bool) {
+    guard animationsActive != isActive else { return }
+    animationsActive = isActive
+    if isActive {
+      updateGazeMonitoring()
+      refreshGaze()
+      restartAnimation()
+    } else {
+      animationTimer?.invalidate()
+      animationTimer = nil
+      stopGazeMonitoring()
+      gazePose = nil
+    }
+  }
 
   func update(with presentation: OverlayPresentation) {
     status = presentation.petStatus
@@ -75,6 +138,13 @@ final class PetView: OverlayInteractionView {
     setAccessibilityRole(canExpand ? .button : .group)
     setAccessibilityLabel("Oh My Agent Pet, \(status.label)")
     setAccessibilityHelp(canExpand ? "Show or hide all agent tasks" : "Agent task status")
+    let nextAnimationState = status.petAnimationState
+    if nextAnimationState != animationState {
+      animationState = nextAnimationState
+      updateGazeMonitoring()
+      refreshGaze()
+      restartAnimation()
+    }
     needsDisplay = true
   }
 
@@ -86,6 +156,11 @@ final class PetView: OverlayInteractionView {
 
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
+    if drawSprite() {
+      drawStatusMark(in: bounds.insetBy(dx: 8, dy: 8))
+      drawBadge()
+      return
+    }
     let bodyRect = bounds.insetBy(dx: 8, dy: 8)
     let earSize: CGFloat = 20
     let leftEar = NSBezierPath()
@@ -110,6 +185,168 @@ final class PetView: OverlayInteractionView {
     drawMouth(in: bodyRect)
     drawStatusMark(in: bodyRect)
     drawBadge()
+  }
+
+  @objc private func accessibilityDisplayOptionsDidChange() {
+    let nextValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    guard nextValue != reducedMotion else { return }
+    reducedMotion = nextValue
+    updateGazeMonitoring()
+    refreshGaze()
+    restartAnimation()
+  }
+
+  private func restartAnimation() {
+    animationTimer?.invalidate()
+    animationTimer = nil
+    animationTimeline = PetAnimationTimeline(
+      state: animationState,
+      reducedMotion: reducedMotion
+    )
+    animationStartedAt = ProcessInfo.processInfo.systemUptime
+    refreshAnimationFrame()
+  }
+
+  @objc private func refreshAnimationFrame() {
+    animationTimer?.invalidate()
+    animationTimer = nil
+    guard spritePackage != nil, animationsActive else {
+      currentAnimationFrame = nil
+      needsDisplay = true
+      return
+    }
+    let elapsed = ProcessInfo.processInfo.systemUptime - animationStartedAt
+    guard let sample = animationTimeline.sample(at: elapsed) else { return }
+    if currentAnimationFrame != sample.frame {
+      currentAnimationFrame = sample.frame
+      needsDisplay = true
+    }
+    guard let remainingDuration = sample.remainingDuration else { return }
+    animationTimer = Timer.scheduledTimer(
+      timeInterval: max(remainingDuration, 0.01),
+      target: self,
+      selector: #selector(refreshAnimationFrame),
+      userInfo: nil,
+      repeats: false
+    )
+  }
+
+  private func drawSprite() -> Bool {
+    guard let spritePackage, let animationFrame = currentAnimationFrame else { return false }
+    let row = gazePose?.row ?? animationFrame.row
+    let column = gazePose?.column ?? animationFrame.column
+    let key = row * PetSpriteVersion.columns + column
+    let image: NSImage
+    if let cached = spriteImages[key] {
+      image = cached
+    } else {
+      guard let cropped = spritePackage.frame(row: row, column: column) else {
+        return false
+      }
+      image = NSImage(
+        cgImage: cropped,
+        size: NSSize(
+          width: PetSpriteVersion.cellWidth,
+          height: PetSpriteVersion.cellHeight
+        )
+      )
+      spriteImages[key] = image
+    }
+    let scale = min(
+      bounds.width / CGFloat(PetSpriteVersion.cellWidth),
+      bounds.height / CGFloat(PetSpriteVersion.cellHeight)
+    )
+    let destination = NSRect(
+      x: bounds.midX - CGFloat(PetSpriteVersion.cellWidth) * scale / 2,
+      y: bounds.midY - CGFloat(PetSpriteVersion.cellHeight) * scale / 2,
+      width: CGFloat(PetSpriteVersion.cellWidth) * scale,
+      height: CGFloat(PetSpriteVersion.cellHeight) * scale
+    )
+    let previousInterpolation = NSGraphicsContext.current?.imageInterpolation
+    NSGraphicsContext.current?.imageInterpolation = .high
+    image.draw(
+      in: destination,
+      from: .zero,
+      operation: .sourceOver,
+      fraction: 1,
+      respectFlipped: true,
+      hints: nil
+    )
+    if let previousInterpolation {
+      NSGraphicsContext.current?.imageInterpolation = previousInterpolation
+    }
+    return true
+  }
+
+  private func updateGazeMonitoring() {
+    let shouldMonitor =
+      animationsActive
+      && !reducedMotion
+      && spritePackage?.version.supportsGaze == true
+      && [.idle, .running, .waving].contains(animationState)
+    if shouldMonitor, globalMouseMonitor == nil, localMouseMonitor == nil {
+      globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) {
+        [weak self] _ in
+        self?.queueGazeRefresh()
+      }
+      localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) {
+        [weak self] event in
+        self?.queueGazeRefresh()
+        return event
+      }
+    } else if !shouldMonitor {
+      stopGazeMonitoring()
+      gazePose = nil
+    }
+  }
+
+  private nonisolated func queueGazeRefresh() {
+    let gate = gazeRefreshGate
+    guard gate.begin() else { return }
+    Task { @MainActor [weak self] in
+      defer { gate.end() }
+      self?.refreshGaze()
+    }
+  }
+
+  private func stopGazeMonitoring() {
+    if let globalMouseMonitor {
+      NSEvent.removeMonitor(globalMouseMonitor)
+      self.globalMouseMonitor = nil
+    }
+    if let localMouseMonitor {
+      NSEvent.removeMonitor(localMouseMonitor)
+      self.localMouseMonitor = nil
+    }
+  }
+
+  private func refreshGaze() {
+    guard animationsActive,
+      !reducedMotion,
+      let spritePackage,
+      let window
+    else {
+      setGazePose(nil)
+      return
+    }
+    let headInView = NSPoint(x: bounds.midX, y: bounds.minY + bounds.height * 0.55)
+    let headInWindow = convert(headInView, to: nil)
+    let headOnScreen = window.convertPoint(toScreen: headInWindow)
+    let mouse = NSEvent.mouseLocation
+    let pose = PetGazeResolver.pose(
+      deltaX: mouse.x - headOnScreen.x,
+      deltaY: mouse.y - headOnScreen.y,
+      deadZoneRadius: min(bounds.width, bounds.height) * 0.15,
+      version: spritePackage.version,
+      state: animationState
+    )
+    setGazePose(pose)
+  }
+
+  private func setGazePose(_ pose: PetGazePose?) {
+    guard gazePose != pose else { return }
+    gazePose = pose
+    needsDisplay = true
   }
 
   private func drawMouth(in rect: NSRect) {
@@ -353,6 +590,14 @@ final class OverlayContainerView: NSView {
 
   required init?(coder: NSCoder) { nil }
 
+  func setSpritePackage(_ package: PetSpritePackage?) {
+    petView.setSpritePackage(package)
+  }
+
+  func setAnimationsActive(_ isActive: Bool) {
+    petView.setAnimationsActive(isActive)
+  }
+
   func update(
     presentation: OverlayPresentation,
     onOpen: @escaping (AgentTaskSnapshot) -> Void,
@@ -401,5 +646,17 @@ private func statusColor(_ status: TaskVisualStatus) -> NSColor {
   case .finished: DesignTokens.statusCompleted
   case .failed: DesignTokens.statusFailed
   case .stopped, .ready: DesignTokens.statusUnknown
+  }
+}
+
+extension TaskVisualStatus {
+  var petAnimationState: PetAnimationState {
+    switch self {
+    case .inputNeeded: .waiting
+    case .working: .running
+    case .finished: .review
+    case .failed: .failed
+    case .stopped, .ready: .idle
+    }
   }
 }

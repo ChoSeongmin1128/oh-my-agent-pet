@@ -1,3 +1,4 @@
+import AgentPetSprites
 import AgentPetUI
 import AppKit
 import Foundation
@@ -15,6 +16,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     self.overlayController = overlayController
 
     let environment = ProcessInfo.processInfo.environment
+    #if DEBUG
+      if let previewPath = environment["OMAPET_PREVIEW_PET_PACKAGE"],
+        let package = try? PetSpritePackageLoader().load(
+          packageDirectory: URL(fileURLWithPath: previewPath, isDirectory: true)
+        )
+      {
+        overlayController.setPetPackage(package)
+      }
+    #endif
     let homeDirectory =
       environment["HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
       ?? FileManager.default.homeDirectoryForCurrentUser
