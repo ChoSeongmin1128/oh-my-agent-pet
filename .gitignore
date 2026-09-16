@@ -21,6 +21,7 @@ Config/*.local.xcconfig
 
 # Build and IDE state.
 .build/
+.swiftpm/
 build/
 dist/
 DerivedData/
