@@ -24,6 +24,29 @@ value = json.load(sys.stdin)
 assert value == {"name": "Oh My Agent Pet", "version": "0.0.0-dev"}
 '
 
+CLI_HOME="$TEMP_ROOT/home"
+CLAUDE_ROOT="$TEMP_ROOT/Claude Config"
+mkdir -p "$CLAUDE_ROOT"
+printf '%s\n' '{"theme":"dark"}' > "$CLAUDE_ROOT/settings.json"
+HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
+    "$BIN_DIR/omapet" setup connect claude --json >/dev/null
+printf '%s\n' '{"hook_event_name":"Stop","session_id":"ci-session","cwd":"/tmp/project","prompt":"must-not-be-stored"}' \
+    | HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" "$BIN_DIR/omapet" hook claude
+HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
+    "$BIN_DIR/omapet" setup status --json \
+    | python3 -c 'import json, sys; assert json.load(sys.stdin)["status"] == "connected"'
+python3 - "$CLI_HOME" <<'PY'
+import json, pathlib, sys
+events = pathlib.Path(sys.argv[1]) / "Library/Application Support/Oh My Agent Pet/events.ndjson"
+lines = events.read_text().splitlines()
+assert len(lines) == 1
+event = json.loads(lines[0])
+assert event["session_id"] == "ci-session"
+assert "must-not-be-stored" not in lines[0]
+PY
+HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
+    "$BIN_DIR/omapet" setup disconnect claude --json >/dev/null
+
 OUTPUT_ROOT="$TEMP_ROOT" "$ROOT_DIR/Scripts/build-app.sh" debug >/dev/null
 APP_DIR="$TEMP_ROOT/Oh My Agent Pet.app"
 
