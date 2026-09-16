@@ -32,6 +32,8 @@ HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
     "$BIN_DIR/omapet" setup connect claude --json >/dev/null
 printf '%s\n' '{"hook_event_name":"Stop","session_id":"ci-session","cwd":"/tmp/project","prompt":"must-not-be-stored"}' \
     | HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" "$BIN_DIR/omapet" hook claude
+printf '%s\n' '{"hook_event_name":"PermissionRequest","session_id":"11111111-1111-1111-1111-111111111111","turn_id":"ci-turn","cwd":"/tmp/project","tool_name":"Bash"}' \
+    | HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" "$BIN_DIR/omapet" hook codex
 HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
     "$BIN_DIR/omapet" setup status --json \
     | python3 -c 'import json, sys; assert json.load(sys.stdin)["status"] == "connected"'
@@ -39,9 +41,14 @@ python3 - "$CLI_HOME" <<'PY'
 import json, pathlib, sys
 events = pathlib.Path(sys.argv[1]) / "Library/Application Support/Oh My Agent Pet/events.ndjson"
 lines = events.read_text().splitlines()
-assert len(lines) == 1
-event = json.loads(lines[0])
-assert event["session_id"] == "ci-session"
+assert len(lines) == 2
+claude = json.loads(lines[0])
+codex = json.loads(lines[1])
+assert claude["provider"] == "claude"
+assert claude["session_id"] == "ci-session"
+assert codex["provider"] == "codex"
+assert codex["session_id"] == "11111111-1111-1111-1111-111111111111"
+assert codex["turn_id"] == "ci-turn"
 assert "must-not-be-stored" not in lines[0]
 PY
 HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
