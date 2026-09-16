@@ -12,6 +12,10 @@ final class ClaudePathsTests: XCTestCase {
       paths.eventsURL.path,
       "/Users/example/Library/Application Support/Oh My Agent Pet/events.ndjson"
     )
+    XCTAssertEqual(
+      paths.desktopSessionsDirectory.path,
+      "/Users/example/Library/Application Support/Claude/claude-code-sessions"
+    )
   }
 
   func testClaudeConfigDirectoryExpandsHomePrefix() {

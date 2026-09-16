@@ -5,6 +5,7 @@ public struct ClaudePaths: Sendable {
   public let settingsURL: URL
   public let applicationSupportDirectory: URL
   public let eventsURL: URL
+  public let desktopSessionsDirectory: URL
 
   public init(homeDirectory: URL, environment: [String: String]) {
     configRoot = Self.configRoot(homeDirectory: homeDirectory, environment: environment)
@@ -13,6 +14,10 @@ public struct ClaudePaths: Sendable {
       homeDirectory
       .appendingPathComponent("Library/Application Support/Oh My Agent Pet", isDirectory: true)
     eventsURL = applicationSupportDirectory.appendingPathComponent("events.ndjson")
+    desktopSessionsDirectory = homeDirectory.appendingPathComponent(
+      "Library/Application Support/Claude/claude-code-sessions",
+      isDirectory: true
+    )
   }
 
   private static func configRoot(

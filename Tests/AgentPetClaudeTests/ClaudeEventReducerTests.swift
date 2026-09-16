@@ -98,6 +98,32 @@ final class ClaudeEventReducerTests: XCTestCase {
     XCTAssertEqual(reducer.snapshots.first?.waiting, .user(.answer))
   }
 
+  func testLatestTerminalMetadataBecomesNavigationTarget() throws {
+    var reducer = ClaudeEventReducer(dataRoot: "/fixture")
+    let event = StoredClaudeHookEvent(
+      recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+      receivedAtMilliseconds: 1_000,
+      hookEventName: "UserPromptSubmit",
+      sessionID: "session",
+      cwd: "/tmp/project",
+      source: nil,
+      notificationType: nil,
+      toolName: nil,
+      clientSurface: .terminal,
+      applicationBundleIdentifier: "com.googlecode.iterm2",
+      terminalSessionID: "w0t0p0:11111111-1111-1111-1111-111111111111",
+      tty: "/dev/ttys001"
+    )
+
+    reducer.apply(event)
+
+    XCTAssertEqual(reducer.snapshots.first?.navigationTarget?.surface, .terminal)
+    XCTAssertEqual(
+      reducer.snapshots.first?.navigationTarget?.terminalSessionID,
+      "w0t0p0:11111111-1111-1111-1111-111111111111"
+    )
+  }
+
   private func event(
     id: Int,
     name: String,

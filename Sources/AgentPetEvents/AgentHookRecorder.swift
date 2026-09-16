@@ -31,7 +31,9 @@ public struct AgentHookRecorder: Sendable {
   public func record(
     input: Data,
     now: Date = Date(),
-    recordID: UUID = UUID()
+    recordID: UUID = UUID(),
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    tty: String? = AgentHookExecutionContext.controllingTTY()
   ) throws -> AgentHookRecordResult {
     guard input.count <= Self.maximumInputBytes else {
       throw AgentHookRecorderError.inputTooLarge
@@ -48,6 +50,8 @@ public struct AgentHookRecorder: Sendable {
       let event = AgentHookEventPolicy.storedEvent(
         from: payload,
         provider: provider,
+        environment: environment,
+        tty: tty,
         now: now,
         recordID: recordID
       )
@@ -110,5 +114,19 @@ public struct AgentHookRecorder: Sendable {
       return Darwin.write(descriptor, baseAddress, bytes.count)
     }
     guard written == data.count else { throw AgentHookRecorderError.partialWrite }
+  }
+}
+
+public enum AgentHookExecutionContext {
+  public static func controllingTTY() -> String? {
+    let descriptor = Darwin.open("/dev/tty", O_RDONLY | O_NOCTTY | O_CLOEXEC)
+    guard descriptor >= 0 else { return nil }
+    defer { Darwin.close(descriptor) }
+    var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+    guard ttyname_r(descriptor, &buffer, buffer.count) == 0 else { return nil }
+    return String(
+      decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) },
+      as: UTF8.self
+    )
   }
 }

@@ -10,10 +10,14 @@ public actor ClaudeTaskProvider: TaskProviderAdapter {
   private var reader: ClaudeEventLogReader
   private var reducer: ClaudeEventReducer
   private var issues: [ClaudeEventLogIssue] = []
+  private var desktopSessionIndex: ClaudeDesktopSessionIndex
 
   public init(paths: ClaudePaths, profileID: String = "default") {
     reader = ClaudeEventLogReader(eventsURL: paths.eventsURL)
     reducer = ClaudeEventReducer(profileID: profileID, dataRoot: paths.configRoot.path)
+    desktopSessionIndex = ClaudeDesktopSessionIndex(
+      sessionsDirectory: paths.desktopSessionsDirectory
+    )
   }
 
   public func loadTasks() async throws -> [AgentTaskSnapshot] {
@@ -34,7 +38,25 @@ public actor ClaudeTaskProvider: TaskProviderAdapter {
         break
       }
     }
-    return reducer.snapshots
+    let snapshots = reducer.snapshots
+    guard !snapshots.isEmpty else { return [] }
+    let desktopRoutes = desktopSessionIndex.routes()
+    return snapshots.map { snapshot in
+      if snapshot.navigationTarget?.surface == .terminal {
+        return snapshot
+      }
+      guard let desktopSessionID = desktopRoutes[snapshot.identity.taskID] else {
+        return snapshot
+      }
+      let deepLink = "claude://code/continue?session=\(desktopSessionID)"
+      return snapshot.replacingNavigationTarget(
+        TaskNavigationTarget(
+          surface: .desktop,
+          applicationBundleIdentifier: "com.anthropic.claudefordesktop",
+          deepLink: deepLink
+        )
+      )
+    }
   }
 
   public func currentIssues() -> [ClaudeEventLogIssue] {

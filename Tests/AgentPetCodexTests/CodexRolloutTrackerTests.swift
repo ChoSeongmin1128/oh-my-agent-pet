@@ -142,6 +142,21 @@ final class CodexRolloutTrackerTests: XCTestCase {
     XCTAssertEqual(refresh.issues, [])
   }
 
+  func testDesktopOriginatorBuildsExactCodexThreadLink() throws {
+    let url = temporaryDirectory().appendingPathComponent("rollout.jsonl")
+    try rollout([
+      metadata(originator: "Codex Desktop"),
+      lifecycle("task_started", turn: "turn-1", second: 1),
+    ]).write(to: url)
+    var tracker = makeTracker(url: url)
+
+    let target = tracker.refresh().snapshot?.navigationTarget
+
+    XCTAssertEqual(target?.surface, .desktop)
+    XCTAssertEqual(target?.applicationBundleIdentifier, "com.openai.codex")
+    XCTAssertEqual(target?.deepLink, "codex://threads/\(uuid(1))")
+  }
+
   private func makeTracker(
     url: URL,
     title: String? = nil
@@ -157,9 +172,10 @@ final class CodexRolloutTrackerTests: XCTestCase {
     )
   }
 
-  private func metadata() -> Data {
-    Data(
-      "{\"timestamp\":\"2026-09-16T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"\(uuid(1))\",\"cwd\":\"/tmp/project\",\"base_instructions\":\"private\"}}\n"
+  private func metadata(originator: String? = nil) -> Data {
+    let originatorField = originator.map { ",\"originator\":\"\($0)\"" } ?? ""
+    return Data(
+      "{\"timestamp\":\"2026-09-16T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"\(uuid(1))\",\"cwd\":\"/tmp/project\",\"base_instructions\":\"private\"\(originatorField)}}\n"
         .utf8
     )
   }
