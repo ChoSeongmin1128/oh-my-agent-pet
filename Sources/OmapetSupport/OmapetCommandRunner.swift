@@ -43,6 +43,7 @@ public struct OmapetCommandRunner: Sendable {
     let resolvedExecutable =
       executableURL
       ?? URL(fileURLWithPath: CommandLine.arguments.first ?? "omapet")
+    let paths = ClaudePaths(homeDirectory: resolvedHome, environment: environment)
     setupService = ClaudeSetupService(
       homeDirectory: resolvedHome,
       environment: environment,
@@ -50,9 +51,7 @@ public struct OmapetCommandRunner: Sendable {
       now: now
     )
     hookRecorder = ClaudeHookRecorder(
-      applicationSupportDirectory:
-        resolvedHome
-        .appendingPathComponent("Library/Application Support/Oh My Agent Pet", isDirectory: true)
+      applicationSupportDirectory: paths.applicationSupportDirectory
     )
   }
 

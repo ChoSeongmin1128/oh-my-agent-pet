@@ -22,7 +22,7 @@ let package = Package(
     ),
     .target(
       name: "AgentPetClaude",
-      dependencies: ["AgentPetCore"]
+      dependencies: ["AgentPetCore", "AgentPetProviders"]
     ),
     .target(
       name: "AgentPetUI",
@@ -34,7 +34,7 @@ let package = Package(
     ),
     .executableTarget(
       name: "OhMyAgentPetApp",
-      dependencies: ["AgentPetCore", "AgentPetProviders", "AgentPetUI"]
+      dependencies: ["AgentPetClaude", "AgentPetCore", "AgentPetProviders", "AgentPetUI"]
     ),
     .executableTarget(
       name: "OmapetCLI",
@@ -50,7 +50,11 @@ let package = Package(
     ),
     .testTarget(
       name: "AgentPetClaudeTests",
-      dependencies: ["AgentPetClaude"]
+      dependencies: ["AgentPetClaude", "AgentPetCore", "AgentPetProviders"]
+    ),
+    .testTarget(
+      name: "AgentPetUITests",
+      dependencies: ["AgentPetCore", "AgentPetUI"]
     ),
     .testTarget(
       name: "OmapetSupportTests",

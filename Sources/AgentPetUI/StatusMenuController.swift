@@ -1,6 +1,29 @@
 import AgentPetCore
 import AppKit
 
+public enum StatusMenuPresentation {
+  public static func title(for representative: RepresentativeTask?) -> String {
+    guard let representative else {
+      return "No connected tasks"
+    }
+
+    if representative.reason == .intervention {
+      return "Input needed · \(representative.task.title)"
+    }
+
+    let prefix: String
+    switch representative.task.result {
+    case .failed:
+      prefix = "Failed"
+    case .completed where representative.task.hasUnseenCompletion:
+      prefix = "Finished"
+    default:
+      prefix = representative.task.work == .running ? "Working" : "Ready"
+    }
+    return "\(prefix) · \(representative.task.title)"
+  }
+}
+
 @MainActor
 public final class StatusMenuController: NSObject {
   private let statusItem: NSStatusItem
@@ -14,17 +37,7 @@ public final class StatusMenuController: NSObject {
   }
 
   public func update(representative: RepresentativeTask?) {
-    guard let representative else {
-      statusRow.title = "No connected tasks"
-      return
-    }
-
-    switch representative.reason {
-    case .intervention:
-      statusRow.title = "Input needed · \(representative.task.title)"
-    case .latestPrompt:
-      statusRow.title = representative.task.title
-    }
+    statusRow.title = StatusMenuPresentation.title(for: representative)
   }
 
   private func configureButton() {
