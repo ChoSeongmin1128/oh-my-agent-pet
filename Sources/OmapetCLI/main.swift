@@ -4,7 +4,7 @@ import OmapetSupport
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 let standardInput: Data
-if arguments == ["hook", "claude"] {
+if arguments == ["hook", "claude"] || arguments == ["hook", "codex"] {
   standardInput = readHookInput(
     from: FileHandle.standardInput,
     maximumBytes: OmapetCommandRunner.maximumHookInputBytes
