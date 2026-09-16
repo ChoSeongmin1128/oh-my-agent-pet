@@ -2,6 +2,8 @@
 
 Oh My Agent Pet is designed to observe local agent-task state and navigate back to the corresponding local task without collecting the contents of your work.
 
+There is no installable release yet. This document describes the implemented Claude hook data boundary and the privacy contract for first-release features that are still in development.
+
 ## Data the app does not collect
 
 - Prompt or response text
@@ -20,9 +22,9 @@ Optional card fields that are disabled do not trigger their additional parsing, 
 
 ## Diagnostics
 
-Detailed diagnostics are collected only after you open the separate debug window. They remain in memory, stop when the window closes, and are cleared unless you explicitly export them.
+The planned diagnostics feature will collect detailed diagnostics only after you open the separate debug window. They will remain in memory, stop when the window closes, and be cleared unless you explicitly export them.
 
-An export creates local Markdown and JSONL files after showing what they contain. The app never sends an export automatically.
+An export will create local Markdown and JSONL files after showing what they contain. The app will never send an export automatically.
 
 ## Network access
 
@@ -36,12 +38,12 @@ Update requests contain no product-specific user identifier, custom tracking par
 
 ## Permissions
 
-The app requests Automation permission for an individual target app only when you first use exact navigation to that target. Accessibility permission is not a default requirement and is requested only if a future enabled feature actually needs it.
+The planned exact-navigation feature will request Automation permission for an individual target app only when you first use navigation to that target. Accessibility permission will not be a default requirement and will be requested only if an enabled feature actually needs it.
 
-Refusing a permission does not stop local status observation. It limits only the feature that requires that permission and provides a recovery path in Settings.
+Refusing a permission will not stop local status observation. It will limit only the feature that requires that permission and provide a recovery path in Settings.
 
 ## Removal
 
-Normal removal deletes the app's integrations, runtime state, caches, diagnostics, and unseen-result state while keeping downloaded pets and preferences. Removing all data is a separate explicit action.
+The planned normal removal flow will delete the app's integrations, runtime state, caches, diagnostics, and unseen-result state while keeping downloaded pets and preferences. Removing all data will be a separate explicit action.
 
 Other tools' hooks, settings, credentials, and files are not removed.

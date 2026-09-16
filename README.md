@@ -4,7 +4,18 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 
 현재 첫 릴리스를 구현하고 있으며 아직 설치 가능한 버전은 없습니다.
 
-## 예정 기능
+## 현재 구현 상태
+
+- macOS 14 이상 Swift/AppKit 메뉴바 앱과 앱 번들에 포함되는 `omapet` CLI
+- Claude Code 연결 상태 확인, dry-run, 연결과 연결 해제
+- 프롬프트 본문과 도구 입출력을 제외한 최소 hook 이벤트의 로컬 기록
+- 앱 시작 시 기존 Claude 이벤트 재생과 이후 변경의 실시간 감지
+- 입력 필요, 작업 중, 완료와 실패를 대표 작업 메뉴 상태로 표시
+- Apple Silicon과 Intel을 함께 검증하는 GitHub Actions CI
+
+현재 소스 코드는 앱 기반과 Claude 상태 관찰 경로까지 구현한 개발 버전입니다. 펫과 카드 화면, 정확한 작업 이동, Codex 연동, 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
+
+## 목표 기능
 
 - Claude Code와 Codex 작업 상태 통합
 - 한 마리의 펫으로 작업 중, 입력 필요, 실패와 완료 표현
@@ -15,7 +26,7 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 - 로컬 진단 창과 명시적인 진단 자료 내보내기
 - 서명된 앱 내 업데이트 확인과 설치
 
-지원 예정 환경은 macOS 14 이상입니다.
+최소 지원 환경은 macOS 14로 설정되어 있습니다.
 
 ## 설치
 
@@ -29,7 +40,7 @@ brew install --cask choseongmin1128/tap/oh-my-agent-pet
 
 CLI 이름은 `omapet`입니다.
 
-Claude Code 연결은 앱의 첫 실행 설정과 같은 엔진을 사용하는 CLI로도 관리합니다.
+현재 소스 빌드에서는 다음 CLI로 Claude Code 연결을 관리할 수 있습니다. 이후 첫 실행 설정 UI도 같은 연결 엔진을 사용합니다.
 
 ```bash
 omapet setup status --json
@@ -42,9 +53,9 @@ omapet setup disconnect claude
 
 ## 업데이트
 
-앱은 서명된 업데이트 피드를 확인하고 새 버전과 릴리스 노트를 표시합니다. 업데이트 설치는 사용자가 선택할 때 진행하며, 자동 확인은 설정에서 끌 수 있습니다. beta 버전은 명시적으로 채널을 선택한 사용자에게만 표시합니다.
+첫 안정 릴리스에서는 서명된 업데이트 피드를 확인하고 새 버전과 릴리스 노트를 표시할 예정입니다. 업데이트 설치는 사용자가 선택할 때 진행하며, 자동 확인은 설정에서 끌 수 있게 합니다. beta 버전은 명시적으로 채널을 선택한 사용자에게만 표시합니다.
 
-Homebrew Cask도 앱이 자체 업데이트할 수 있는 패키지로 표시합니다. Homebrew로 직접 갱신하는 경로도 함께 제공합니다.
+Homebrew Cask도 앱이 자체 업데이트할 수 있는 패키지로 표시하고, Homebrew로 직접 갱신하는 경로를 함께 제공할 예정입니다. Sparkle 업데이트는 현재 구현 전입니다.
 
 ## 개인정보
 
