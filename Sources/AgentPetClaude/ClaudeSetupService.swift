@@ -71,8 +71,11 @@ public struct ClaudeSetupService: Sendable {
     now: @escaping @Sendable () -> Date,
     beforeWrite: @escaping @Sendable () -> Void
   ) {
-    let configRoot = Self.configRoot(homeDirectory: homeDirectory, environment: environment)
-    settingsURL = configRoot.appendingPathComponent("settings.json")
+    settingsURL =
+      ClaudePaths(
+        homeDirectory: homeDirectory,
+        environment: environment
+      ).settingsURL
     self.executableURL = executableURL.resolvingSymlinksInPath().standardizedFileURL
     self.now = now
     self.beforeWrite = beforeWrite
@@ -232,22 +235,6 @@ public struct ClaudeSetupService: Sendable {
     }
   }
 
-  private static func configRoot(
-    homeDirectory: URL,
-    environment: [String: String]
-  ) -> URL {
-    guard let configured = environment["CLAUDE_CONFIG_DIR"], !configured.isEmpty else {
-      return homeDirectory.appendingPathComponent(".claude", isDirectory: true)
-    }
-    if configured == "~" {
-      return homeDirectory
-    }
-    if configured.hasPrefix("~/") {
-      return homeDirectory.appendingPathComponent(
-        String(configured.dropFirst(2)), isDirectory: true)
-    }
-    return URL(fileURLWithPath: configured, isDirectory: true).standardizedFileURL
-  }
 }
 
 private enum SecureAtomicFile {
