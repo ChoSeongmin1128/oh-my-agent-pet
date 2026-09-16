@@ -80,6 +80,38 @@ final class ClaudeTaskProviderTests: XCTestCase {
     XCTAssertEqual(rebuilt.map(\.identity.taskID), ["new"])
   }
 
+  func testDesktopIndexAddsExactClaudeDeepLink() async throws {
+    let home = temporaryDirectory()
+    let paths = ClaudePaths(homeDirectory: home, environment: [:])
+    try FileManager.default.createDirectory(
+      at: paths.applicationSupportDirectory,
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+      at: paths.desktopSessionsDirectory,
+      withIntermediateDirectories: true
+    )
+    let cliID = "11111111-1111-1111-1111-111111111111"
+    try line(event(id: 1, name: "SessionStart", sessionID: cliID)).write(
+      to: paths.eventsURL
+    )
+    try Data(
+      """
+      {"sessionId":"local_22222222-2222-2222-2222-222222222222","cliSessionId":"\(cliID)","isArchived":false,"lastActivityAt":10}
+      """.utf8
+    ).write(to: paths.desktopSessionsDirectory.appendingPathComponent("route.json"))
+    let provider = ClaudeTaskProvider(paths: paths)
+
+    let target = try await provider.loadTasks().first?.navigationTarget
+
+    XCTAssertEqual(target?.surface, .desktop)
+    XCTAssertEqual(target?.applicationBundleIdentifier, "com.anthropic.claudefordesktop")
+    XCTAssertEqual(
+      target?.deepLink,
+      "claude://code/continue?session=local_22222222-2222-2222-2222-222222222222"
+    )
+  }
+
   private func event(
     id: Int,
     name: String,

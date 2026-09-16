@@ -47,7 +47,7 @@ final class ClaudeEventLogReaderTests: XCTestCase {
     let supported = String(decoding: try line(event(id: 1, name: "Stop")), as: UTF8.self)
     data.append(
       Data(
-        supported.replacingOccurrences(of: "\"schema_version\":2", with: "\"schema_version\":99")
+        supported.replacingOccurrences(of: "\"schema_version\":3", with: "\"schema_version\":99")
           .utf8))
     try data.write(to: url)
     var reader = ClaudeEventLogReader(eventsURL: url)

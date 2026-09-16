@@ -29,7 +29,9 @@ final class ClaudeHookRecorderTests: XCTestCase {
     let result = try recorder.record(
       input: payload,
       now: Date(timeIntervalSince1970: 1_000),
-      recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+      recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+      environment: [:],
+      tty: nil
     )
     let storedData = try Data(contentsOf: recorder.eventsURL)
     let line = try XCTUnwrap(String(data: storedData, encoding: .utf8))

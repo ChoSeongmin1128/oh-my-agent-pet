@@ -44,6 +44,7 @@ public struct AgentTaskSnapshot: Codable, Hashable, Sendable {
   public let completedAt: Date?
   public let updatedAt: Date
   public let hasUnseenCompletion: Bool
+  public let navigationTarget: TaskNavigationTarget?
 
   public init(
     identity: TaskIdentity,
@@ -55,7 +56,8 @@ public struct AgentTaskSnapshot: Codable, Hashable, Sendable {
     interventionRequestedAt: Date?,
     completedAt: Date?,
     updatedAt: Date,
-    hasUnseenCompletion: Bool
+    hasUnseenCompletion: Bool,
+    navigationTarget: TaskNavigationTarget? = nil
   ) {
     self.identity = identity
     self.title = title
@@ -67,5 +69,24 @@ public struct AgentTaskSnapshot: Codable, Hashable, Sendable {
     self.completedAt = completedAt
     self.updatedAt = updatedAt
     self.hasUnseenCompletion = hasUnseenCompletion
+    self.navigationTarget = navigationTarget
+  }
+
+  public func replacingNavigationTarget(
+    _ navigationTarget: TaskNavigationTarget?
+  ) -> AgentTaskSnapshot {
+    AgentTaskSnapshot(
+      identity: identity,
+      title: title,
+      work: work,
+      result: result,
+      waiting: waiting,
+      lastPromptAt: lastPromptAt,
+      interventionRequestedAt: interventionRequestedAt,
+      completedAt: completedAt,
+      updatedAt: updatedAt,
+      hasUnseenCompletion: hasUnseenCompletion,
+      navigationTarget: navigationTarget
+    )
   }
 }

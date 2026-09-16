@@ -58,9 +58,12 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Oh My Agent Pet uses Automation only when you ask it to focus the Terminal tab for an agent task.</string>
 </dict>
 </plist>
 PLIST
 
 plutil -lint "$CONTENTS_DIR/Info.plist" >/dev/null
+plutil -lint "$ROOT_DIR/Config/OhMyAgentPet.entitlements" >/dev/null
 echo "$APP_DIR"

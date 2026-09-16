@@ -13,9 +13,10 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 - 앱 시작 시 기존 이벤트 재생과 이후 Claude·Codex 변경의 실시간 감지
 - Codex session index·rollout 읽기와 `PermissionRequest` 승인 대기 결합
 - 입력 필요, 작업 중, 완료와 실패를 대표 작업 메뉴 상태로 표시
+- 대표 작업 메뉴 행에서 Codex·Claude Desktop 대화, iTerm 세션 또는 Terminal 탭으로 이동
 - Apple Silicon과 Intel을 함께 검증하는 GitHub Actions CI
 
-현재 소스 코드는 앱 기반과 Claude·Codex 상태 관찰 및 CLI 연결 경로까지 구현한 개발 버전입니다. 펫과 카드 화면, 정확한 작업 이동, 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
+현재 소스 코드는 앱 기반과 Claude·Codex 상태 관찰, CLI 연결 및 대표 작업 이동 경로까지 구현한 개발 버전입니다. 펫과 카드 화면, 완료 확인, 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
 
 ## 목표 기능
 
@@ -56,6 +57,17 @@ omapet setup disconnect codex
 ```
 
 `--dry-run`은 현재 설정과 예상 변경을 확인하고 파일을 수정하지 않습니다. 연결과 해제는 Oh My Agent Pet marker가 있는 hook만 대상으로 하며 다른 hook과 설정을 보존합니다. Codex 연결은 현재 설치된 Codex가 계산한 각 hook의 정확한 해시만 신뢰하고, 연결 해제 시 해당 신뢰 항목만 정리합니다.
+
+## 작업으로 돌아가기
+
+현재 메뉴의 대표 작업 행을 누르면 실행 위치에 따라 다음 경로를 사용합니다.
+
+- Codex Desktop: 해당 thread deep link
+- Claude Desktop Code: 로컬 session deep link
+- iTerm2: hook에서 받은 `ITERM_SESSION_ID`를 사용하는 공식 reveal URL
+- Terminal.app: hook에서 받은 TTY와 일치하는 창과 탭 선택
+
+iTerm2 이동에는 Automation 권한이 필요하지 않습니다. Terminal.app은 처음 정확한 탭 이동을 사용할 때 Automation 권한을 요청할 수 있습니다. 권한이 없거나 정확한 대상이 사라졌으면 새 세션을 만들지 않고 원래 앱만 활성화하며, 메뉴에 부분 성공 또는 실패를 표시합니다.
 
 ## 업데이트
 

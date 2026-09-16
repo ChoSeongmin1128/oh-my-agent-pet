@@ -26,7 +26,9 @@ final class AgentHookEventTests: XCTestCase {
       try recorder.record(
         input: payload,
         now: Date(timeIntervalSince1970: 1),
-        recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        environment: [:],
+        tty: nil
       ),
       .recorded
     )
@@ -62,6 +64,80 @@ final class AgentHookEventTests: XCTestCase {
     )
 
     XCTAssertThrowsError(try JSONDecoder().decode(StoredAgentHookEvent.self, from: data))
+  }
+
+  func testITermRoutingMetadataIsAllowlistedAndBounded() throws {
+    let directory = temporaryDirectory()
+    let recorder = AgentHookRecorder(provider: .claude, applicationSupportDirectory: directory)
+    let payload = Data(
+      #"{"hook_event_name":"UserPromptSubmit","session_id":"session","cwd":"/tmp"}"#.utf8
+    )
+
+    _ = try recorder.record(
+      input: payload,
+      environment: [
+        "TERM_PROGRAM": "iTerm.app",
+        "ITERM_SESSION_ID": "w0t1p0:12345678-1234-1234-1234-123456789ABC",
+        "SECRET_TOKEN": "must-not-be-stored",
+      ],
+      tty: "/dev/ttys012"
+    )
+    let data = try Data(contentsOf: recorder.eventsURL)
+    let event = try JSONDecoder().decode(StoredAgentHookEvent.self, from: Data(data.dropLast()))
+    let text = String(decoding: data, as: UTF8.self)
+
+    XCTAssertEqual(event.clientSurface, .terminal)
+    XCTAssertEqual(event.applicationBundleIdentifier, "com.googlecode.iterm2")
+    XCTAssertEqual(event.terminalSessionID, "w0t1p0:12345678-1234-1234-1234-123456789ABC")
+    XCTAssertEqual(event.tty, "/dev/ttys012")
+    XCTAssertFalse(text.contains("SECRET_TOKEN"))
+    XCTAssertFalse(text.contains("must-not-be-stored"))
+  }
+
+  func testClaudeDesktopRoutingUsesOnlyKnownBundleIdentifier() throws {
+    let directory = temporaryDirectory()
+    let recorder = AgentHookRecorder(provider: .claude, applicationSupportDirectory: directory)
+    let payload = Data(
+      #"{"hook_event_name":"SessionStart","session_id":"session","cwd":"/tmp"}"#.utf8
+    )
+
+    _ = try recorder.record(
+      input: payload,
+      environment: [
+        "CLAUDE_CODE_ENTRYPOINT": "claude-desktop",
+        "TERM_PROGRAM": "Untrusted Secret Terminal",
+      ],
+      tty: nil
+    )
+    let data = try Data(contentsOf: recorder.eventsURL)
+    let event = try JSONDecoder().decode(StoredAgentHookEvent.self, from: Data(data.dropLast()))
+
+    XCTAssertEqual(event.clientSurface, .desktop)
+    XCTAssertEqual(event.applicationBundleIdentifier, "com.anthropic.claudefordesktop")
+    XCTAssertNil(event.terminalSessionID)
+    XCTAssertNil(event.tty)
+    XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("Untrusted"))
+  }
+
+  func testCodexDesktopOriginatorIsNormalizedWithoutRawEnvironment() throws {
+    let directory = temporaryDirectory()
+    let recorder = AgentHookRecorder(provider: .codex, applicationSupportDirectory: directory)
+    let payload = Data(
+      #"{"hook_event_name":"SessionStart","session_id":"11111111-1111-1111-1111-111111111111","cwd":"/tmp"}"#
+        .utf8
+    )
+
+    _ = try recorder.record(
+      input: payload,
+      environment: ["CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex"],
+      tty: nil
+    )
+    let data = try Data(contentsOf: recorder.eventsURL)
+    let event = try JSONDecoder().decode(StoredAgentHookEvent.self, from: Data(data.dropLast()))
+
+    XCTAssertEqual(event.clientSurface, .desktop)
+    XCTAssertEqual(event.applicationBundleIdentifier, "com.openai.codex")
+    XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("ORIGINATOR_OVERRIDE"))
   }
 
   private func temporaryDirectory() -> URL {

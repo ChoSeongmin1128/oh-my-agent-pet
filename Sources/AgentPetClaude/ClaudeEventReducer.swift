@@ -45,9 +45,13 @@ public struct ClaudeEventReducer: Sendable {
         completedAt: nil,
         updatedAt: timestamp,
         hasUnseenCompletion: false,
-        toolFailureCount: 0
+        toolFailureCount: 0,
+        navigationTarget: nil
       )
     session.cwd = event.cwd
+    if let navigationTarget = navigationTarget(for: event) {
+      session.navigationTarget = navigationTarget
+    }
 
     switch event.hookEventName {
     case "SessionStart":
@@ -134,8 +138,33 @@ public struct ClaudeEventReducer: Sendable {
       interventionRequestedAt: session.interventionRequestedAt,
       completedAt: session.completedAt,
       updatedAt: session.updatedAt,
-      hasUnseenCompletion: session.hasUnseenCompletion
+      hasUnseenCompletion: session.hasUnseenCompletion,
+      navigationTarget: session.navigationTarget
     )
+  }
+
+  private func navigationTarget(for event: StoredClaudeHookEvent) -> TaskNavigationTarget? {
+    guard let surface = event.clientSurface,
+      let bundleIdentifier = event.applicationBundleIdentifier
+    else { return nil }
+    switch (surface, bundleIdentifier) {
+    case (.desktop, "com.anthropic.claudefordesktop"):
+      return TaskNavigationTarget(
+        surface: .desktop,
+        applicationBundleIdentifier: bundleIdentifier
+      )
+    case (.terminal, "com.googlecode.iterm2"),
+      (.terminal, "com.apple.Terminal"):
+      guard event.terminalSessionID != nil || event.tty != nil else { return nil }
+      return TaskNavigationTarget(
+        surface: .terminal,
+        applicationBundleIdentifier: bundleIdentifier,
+        terminalSessionID: event.terminalSessionID,
+        tty: event.tty
+      )
+    default:
+      return nil
+    }
   }
 
   private func requestIntervention(
@@ -187,4 +216,5 @@ private struct SessionState: Sendable {
   var updatedAt: Date
   var hasUnseenCompletion: Bool
   var toolFailureCount: Int
+  var navigationTarget: TaskNavigationTarget?
 }

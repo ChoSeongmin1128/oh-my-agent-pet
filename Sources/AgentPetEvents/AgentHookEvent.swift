@@ -5,9 +5,14 @@ public enum AgentHookProvider: String, Codable, CaseIterable, Sendable {
   case codex
 }
 
+public enum AgentHookClientSurface: String, Codable, Sendable {
+  case desktop
+  case terminal
+}
+
 public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
-  public static let currentSchemaVersion = 2
-  public static let supportedSchemaVersions: Set<Int> = [1, 2]
+  public static let currentSchemaVersion = 3
+  public static let supportedSchemaVersions: Set<Int> = [1, 2, 3]
 
   public let schemaVersion: Int
   public let recordID: UUID
@@ -20,6 +25,10 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
   public let source: String?
   public let notificationType: String?
   public let toolName: String?
+  public let clientSurface: AgentHookClientSurface?
+  public let applicationBundleIdentifier: String?
+  public let terminalSessionID: String?
+  public let tty: String?
 
   public init(
     recordID: UUID,
@@ -31,7 +40,11 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
     cwd: String,
     source: String?,
     notificationType: String?,
-    toolName: String?
+    toolName: String?,
+    clientSurface: AgentHookClientSurface? = nil,
+    applicationBundleIdentifier: String? = nil,
+    terminalSessionID: String? = nil,
+    tty: String? = nil
   ) {
     schemaVersion = Self.currentSchemaVersion
     self.recordID = recordID
@@ -44,6 +57,10 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
     self.source = source
     self.notificationType = notificationType
     self.toolName = toolName
+    self.clientSurface = clientSurface
+    self.applicationBundleIdentifier = applicationBundleIdentifier
+    self.terminalSessionID = terminalSessionID
+    self.tty = tty
   }
 
   public init(from decoder: Decoder) throws {
@@ -54,7 +71,7 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
     switch schemaVersion {
     case 1:
       provider = .claude
-    case Self.currentSchemaVersion:
+    case 2, Self.currentSchemaVersion:
       provider = try values.decode(AgentHookProvider.self, forKey: .provider)
     default:
       provider = try values.decodeIfPresent(AgentHookProvider.self, forKey: .provider) ?? .claude
@@ -66,6 +83,16 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
     source = try values.decodeIfPresent(String.self, forKey: .source)
     notificationType = try values.decodeIfPresent(String.self, forKey: .notificationType)
     toolName = try values.decodeIfPresent(String.self, forKey: .toolName)
+    clientSurface = try values.decodeIfPresent(
+      AgentHookClientSurface.self,
+      forKey: .clientSurface
+    )
+    applicationBundleIdentifier = try values.decodeIfPresent(
+      String.self,
+      forKey: .applicationBundleIdentifier
+    )
+    terminalSessionID = try values.decodeIfPresent(String.self, forKey: .terminalSessionID)
+    tty = try values.decodeIfPresent(String.self, forKey: .tty)
   }
 
   enum CodingKeys: String, CodingKey {
@@ -80,6 +107,10 @@ public struct StoredAgentHookEvent: Codable, Equatable, Sendable {
     case source
     case notificationType = "notification_type"
     case toolName = "tool_name"
+    case clientSurface = "client_surface"
+    case applicationBundleIdentifier = "application_bundle_id"
+    case terminalSessionID = "terminal_session_id"
+    case tty
   }
 }
 
@@ -117,6 +148,8 @@ enum AgentHookEventPolicy {
   static func storedEvent(
     from input: AgentHookInput,
     provider: AgentHookProvider,
+    environment: [String: String],
+    tty: String?,
     now: Date,
     recordID: UUID
   ) -> StoredAgentHookEvent? {
@@ -128,6 +161,11 @@ enum AgentHookEventPolicy {
       return nil
     }
 
+    let location = executionLocation(
+      provider: provider,
+      environment: environment,
+      tty: tty
+    )
     return StoredAgentHookEvent(
       recordID: recordID,
       receivedAtMilliseconds: Int64((now.timeIntervalSince1970 * 1_000).rounded()),
@@ -138,8 +176,85 @@ enum AgentHookEventPolicy {
       cwd: cwd,
       source: bounded(input.source, maximum: 128),
       notificationType: bounded(input.notificationType, maximum: 128),
-      toolName: bounded(input.toolName, maximum: 256)
+      toolName: bounded(input.toolName, maximum: 256),
+      clientSurface: location?.surface,
+      applicationBundleIdentifier: location?.bundleIdentifier,
+      terminalSessionID: location?.terminalSessionID,
+      tty: location?.tty
     )
+  }
+
+  private static func executionLocation(
+    provider: AgentHookProvider,
+    environment: [String: String],
+    tty: String?
+  ) -> HookExecutionLocation? {
+    if provider == .claude,
+      environment["CLAUDE_CODE_ENTRYPOINT"]?.lowercased().contains("desktop") == true
+    {
+      return HookExecutionLocation(
+        surface: .desktop,
+        bundleIdentifier: "com.anthropic.claudefordesktop",
+        terminalSessionID: nil,
+        tty: nil
+      )
+    }
+    if provider == .codex,
+      environment["CODEX_INTERNAL_ORIGINATOR_OVERRIDE"] == "Codex"
+    {
+      return HookExecutionLocation(
+        surface: .desktop,
+        bundleIdentifier: "com.openai.codex",
+        terminalSessionID: nil,
+        tty: nil
+      )
+    }
+
+    let terminalProgram = environment["TERM_PROGRAM"]?.lowercased()
+    let bundleIdentifier: String?
+    switch terminalProgram {
+    case "iterm.app", "iterm2":
+      bundleIdentifier = "com.googlecode.iterm2"
+    case "apple_terminal", "terminal", "terminal.app":
+      bundleIdentifier = "com.apple.Terminal"
+    default:
+      bundleIdentifier = nil
+    }
+    let safeTTY = validatedTTY(tty)
+    let safeSessionID =
+      bundleIdentifier == "com.googlecode.iterm2"
+      ? validatedTerminalSessionID(environment["ITERM_SESSION_ID"])
+      : nil
+    guard let bundleIdentifier, safeSessionID != nil || safeTTY != nil else { return nil }
+    return HookExecutionLocation(
+      surface: .terminal,
+      bundleIdentifier: bundleIdentifier,
+      terminalSessionID: safeSessionID,
+      tty: safeTTY
+    )
+  }
+
+  private static func validatedTerminalSessionID(_ value: String?) -> String? {
+    guard let value = bounded(value, maximum: 256),
+      let separator = value.lastIndex(of: ":"),
+      UUID(uuidString: String(value[value.index(after: separator)...])) != nil,
+      value.unicodeScalars.allSatisfy({
+        CharacterSet.alphanumerics
+          .union(CharacterSet(charactersIn: "-_:.")).contains($0)
+      })
+    else { return nil }
+    return value
+  }
+
+  private static func validatedTTY(_ value: String?) -> String? {
+    guard let value = bounded(value, maximum: 128), value.hasPrefix("/dev/tty") else {
+      return nil
+    }
+    let suffix = value.dropFirst(8)
+    guard !suffix.isEmpty,
+      suffix.allSatisfy({ $0.isLetter || $0.isNumber })
+    else { return nil }
+    return value
   }
 
   private static func bounded(_ value: String?, maximum: Int) -> String? {
@@ -148,4 +263,11 @@ enum AgentHookEventPolicy {
     }
     return value
   }
+}
+
+private struct HookExecutionLocation {
+  let surface: AgentHookClientSurface
+  let bundleIdentifier: String
+  let terminalSessionID: String?
+  let tty: String?
 }

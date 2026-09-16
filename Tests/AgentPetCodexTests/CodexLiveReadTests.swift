@@ -24,8 +24,15 @@ final class CodexLiveReadTests: XCTestCase {
     XCTAssertLessThanOrEqual(tasks.count, CodexTaskProvider.defaultMaximumSessions)
     let running = tasks.filter { $0.work == .running }.count
     let completed = tasks.filter { $0.result == .completed }.count
+    let desktopTargets = tasks.filter {
+      $0.navigationTarget?.applicationBundleIdentifier == "com.openai.codex"
+        && $0.navigationTarget?.deepLink?.hasPrefix("codex://threads/") == true
+    }.count
+    if ProcessInfo.processInfo.environment["OMAPET_EXPECT_CODEX_DESKTOP_TARGETS"] == "1" {
+      XCTAssertGreaterThan(desktopTargets, 0)
+    }
     print(
-      "live_codex_tasks=\(tasks.count) running=\(running) completed=\(completed) initial=\(initialElapsed) refresh=\(refreshElapsed)"
+      "live_codex_tasks=\(tasks.count) running=\(running) completed=\(completed) desktop_targets=\(desktopTargets) initial=\(initialElapsed) refresh=\(refreshElapsed)"
     )
   }
 }

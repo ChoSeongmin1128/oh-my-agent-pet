@@ -90,7 +90,8 @@ struct CodexRolloutTracker {
       completedAt: nil,
       updatedAt: candidate.indexUpdatedAt,
       indexUpdatedAt: candidate.indexUpdatedAt,
-      hasUnseenCompletion: false
+      hasUnseenCompletion: false,
+      navigationTarget: nil
     )
 
     guard fileStatus.st_size > 0 else { return [] }
@@ -208,7 +209,8 @@ struct CodexRolloutTracker {
       interventionRequestedAt: nil,
       completedAt: state.completedAt,
       updatedAt: max(state.updatedAt, state.indexUpdatedAt),
-      hasUnseenCompletion: state.hasUnseenCompletion
+      hasUnseenCompletion: state.hasUnseenCompletion,
+      navigationTarget: state.navigationTarget
     )
   }
 
@@ -221,6 +223,17 @@ struct CodexRolloutTracker {
     }
     if let cwd = metadata.payload.cwd {
       state?.cwd = cwd
+    }
+    if let sessionID = state?.sessionID,
+      UUID(uuidString: sessionID) != nil,
+      metadata.payload.originator == "Codex Desktop"
+        || metadata.payload.originator == "codex_work_desktop"
+    {
+      state?.navigationTarget = TaskNavigationTarget(
+        surface: .desktop,
+        applicationBundleIdentifier: "com.openai.codex",
+        deepLink: "codex://threads/\(sessionID)"
+      )
     }
   }
 
@@ -373,6 +386,7 @@ private struct CodexRolloutState {
   var updatedAt: Date
   var indexUpdatedAt: Date
   var hasUnseenCompletion: Bool
+  var navigationTarget: TaskNavigationTarget?
 }
 
 private struct CodexMetadataEnvelope: Decodable {
@@ -383,11 +397,13 @@ private struct CodexMetadataEnvelope: Decodable {
     let id: String?
     let sessionID: String?
     let cwd: String?
+    let originator: String?
 
     enum CodingKeys: String, CodingKey {
       case id
       case sessionID = "session_id"
       case cwd
+      case originator
     }
   }
 }
