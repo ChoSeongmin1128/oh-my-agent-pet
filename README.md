@@ -29,6 +29,17 @@ brew install --cask choseongmin1128/tap/oh-my-agent-pet
 
 CLI 이름은 `omapet`입니다.
 
+Claude Code 연결은 앱의 첫 실행 설정과 같은 엔진을 사용하는 CLI로도 관리합니다.
+
+```bash
+omapet setup status --json
+omapet setup connect claude --dry-run --json
+omapet setup connect claude
+omapet setup disconnect claude
+```
+
+`--dry-run`은 현재 설정과 예상 변경을 확인하고 파일을 수정하지 않습니다. 연결과 해제는 Oh My Agent Pet이 추가한 hook만 대상으로 하며 다른 hook과 Claude Code 설정을 보존합니다.
+
 ## 업데이트
 
 앱은 서명된 업데이트 피드를 확인하고 새 버전과 릴리스 노트를 표시합니다. 업데이트 설치는 사용자가 선택할 때 진행하며, 자동 확인은 설정에서 끌 수 있습니다. beta 버전은 명시적으로 채널을 선택한 사용자에게만 표시합니다.
