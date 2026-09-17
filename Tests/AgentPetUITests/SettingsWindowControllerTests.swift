@@ -11,14 +11,14 @@ final class SettingsWindowControllerTests: XCTestCase {
   private var defaults: UserDefaults!
   private var suiteName: String!
 
-  override func setUpWithError() throws {
+  override func setUp() async throws {
     root = try PetPackageFixture.temporaryDirectory(prefix: "omapet-settings")
     suiteName = "SettingsWindowControllerTests.\(UUID().uuidString)"
     defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     defaults.removePersistentDomain(forName: suiteName)
   }
 
-  override func tearDown() {
+  override func tearDown() async throws {
     defaults.removePersistentDomain(forName: suiteName)
     try? FileManager.default.removeItem(at: root)
   }

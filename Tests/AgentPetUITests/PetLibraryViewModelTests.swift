@@ -11,13 +11,13 @@ final class PetLibraryViewModelTests: XCTestCase {
   private var service: PetLibraryService!
   private var changes = 0
 
-  override func setUpWithError() throws {
+  override func setUp() async throws {
     root = try PetPackageFixture.temporaryDirectory(prefix: "omapet-viewmodel")
     service = PetLibraryService(
       paths: PetLibraryPaths(applicationSupportDirectory: root.appendingPathComponent("support")))
   }
 
-  override func tearDown() {
+  override func tearDown() async throws {
     try? FileManager.default.removeItem(at: root)
   }
 
