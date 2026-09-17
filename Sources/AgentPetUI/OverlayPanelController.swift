@@ -28,6 +28,7 @@ public final class OverlayPanelController {
   private var tasks: [AgentTaskSnapshot] = []
   private var representative: RepresentativeTask?
   private var isTemporarilyExpanded = false
+  private var hasRestoredPosition = false
   private var openTaskHandler: ((AgentTaskSnapshot) -> Void)?
   private var stateHandler: ((OverlayMenuState) -> Void)?
 
@@ -50,6 +51,7 @@ public final class OverlayPanelController {
     panel.hidesOnDeactivate = false
     render()
     restorePosition()
+    hasRestoredPosition = true
     applyVisibility()
   }
 
@@ -64,6 +66,12 @@ public final class OverlayPanelController {
 
   public func setPetPackage(_ package: PetSpritePackage?) {
     contentView.setSpritePackage(package)
+  }
+
+  public func setPetHidden(_ hidden: Bool) {
+    guard contentView.isPetHidden != hidden else { return }
+    contentView.setPetHidden(hidden)
+    render()
   }
 
   public func update(tasks: [AgentTaskSnapshot], representative: RepresentativeTask?) {
@@ -109,9 +117,13 @@ public final class OverlayPanelController {
       onDragEnded: { [weak self] in self?.finishDragging() }
     )
     let origin = panel.frame.origin
-    panel.setContentSize(contentView.preferredSize)
+    panel.setContentSize(
+      NSSize(
+        width: max(contentView.preferredSize.width, 1),
+        height: max(contentView.preferredSize.height, 1)))
     panel.setFrameOrigin(origin)
     clampToVisibleScreen()
+    applyVisibility()
   }
 
   private func toggleTemporaryExpansion() {
@@ -129,11 +141,15 @@ public final class OverlayPanelController {
     preferencesStore.save(preferences)
   }
 
+  // The panel is shown only after the saved position is restored, and ordering calls happen
+  // only on an actual visibility change so task refreshes do not re-order the panel.
   private func applyVisibility() {
     contentView.setAnimationsActive(preferences.isVisible)
-    if preferences.isVisible {
+    guard hasRestoredPosition else { return }
+    let shouldShow = preferences.isVisible && !contentView.isEmpty
+    if shouldShow, !panel.isVisible {
       panel.orderFrontRegardless()
-    } else {
+    } else if !shouldShow, panel.isVisible {
       panel.orderOut(nil)
     }
   }

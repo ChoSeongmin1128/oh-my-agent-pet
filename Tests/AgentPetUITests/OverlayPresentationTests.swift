@@ -23,7 +23,7 @@ final class OverlayPresentationTests: XCTestCase {
     XCTAssertEqual(presentation.cards.map(\.task.identity.taskID), ["newer-waiting"])
     XCTAssertEqual(presentation.cards.first?.status, .inputNeeded)
     XCTAssertEqual(presentation.additionalInterventionCount, 1)
-    XCTAssertTrue(presentation.canExpandFromPet)
+    XCTAssertTrue(presentation.canToggleExpansion)
     XCTAssertEqual(presentation.cards.first?.providerLabel, "Claude")
   }
 
@@ -49,7 +49,7 @@ final class OverlayPresentationTests: XCTestCase {
     XCTAssertEqual(presentation.cards[1].shortTaskID, "abcdef")
     XCTAssertEqual(presentation.cards[2].shortTaskID, "abcdef")
     XCTAssertEqual(presentation.additionalInterventionCount, 0)
-    XCTAssertFalse(presentation.canExpandFromPet)
+    XCTAssertFalse(presentation.canToggleExpansion)
   }
 
   func testNoCardModeUsesSinglePetCompletionDotAndTemporaryExpansion() {
@@ -79,7 +79,7 @@ final class OverlayPresentationTests: XCTestCase {
 
     XCTAssertTrue(hidden.cards.isEmpty)
     XCTAssertTrue(hidden.showsPetCompletionDot)
-    XCTAssertTrue(hidden.canExpandFromPet)
+    XCTAssertTrue(hidden.canToggleExpansion)
     XCTAssertEqual(expanded.cards.count, 2)
     XCTAssertFalse(expanded.showsPetCompletionDot)
   }

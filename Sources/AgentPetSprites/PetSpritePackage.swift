@@ -83,7 +83,7 @@ public struct PetSpritePackageLoader {
     } catch {
       throw PetSpritePackageError.invalidManifest
     }
-    guard Self.isValidIdentifier(manifest.id) else {
+    guard Self.isValidPackageIdentifier(manifest.id) else {
       throw PetSpritePackageError.invalidIdentifier
     }
     guard Self.isValidDisplayName(manifest.displayName) else {
@@ -189,7 +189,7 @@ public struct PetSpritePackageLoader {
     }
   }
 
-  private static func isValidIdentifier(_ value: String) -> Bool {
+  public static func isValidPackageIdentifier(_ value: String) -> Bool {
     guard (1...64).contains(value.count), value != ".", value != ".." else { return false }
     return value.unicodeScalars.allSatisfy {
       CharacterSet.alphanumerics.contains($0)
@@ -202,7 +202,7 @@ public struct PetSpritePackageLoader {
     return !trimmed.isEmpty && trimmed.count <= 80
   }
 
-  private static func isSafeRelativePath(_ value: String) -> Bool {
+  public static func isSafeRelativePath(_ value: String) -> Bool {
     guard !value.isEmpty,
       !value.hasPrefix("/"),
       !value.contains("\\"),

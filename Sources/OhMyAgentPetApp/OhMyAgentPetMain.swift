@@ -1,4 +1,5 @@
-import AgentPetSprites
+import AgentPetClaude
+import AgentPetLibrary
 import AgentPetUI
 import AppKit
 import Foundation
@@ -8,6 +9,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusMenuController: StatusMenuController?
   private var overlayController: OverlayPanelController?
   private var taskController: ApplicationTaskController?
+  private var petController: ApplicationPetController?
+  private var settingsWindowController: SettingsWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let statusMenuController = StatusMenuController()
@@ -16,18 +19,42 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     self.overlayController = overlayController
 
     let environment = ProcessInfo.processInfo.environment
-    #if DEBUG
-      if let previewPath = environment["OMAPET_PREVIEW_PET_PACKAGE"],
-        let package = try? PetSpritePackageLoader().load(
-          packageDirectory: URL(fileURLWithPath: previewPath, isDirectory: true)
-        )
-      {
-        overlayController.setPetPackage(package)
-      }
-    #endif
     let homeDirectory =
       environment["HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
       ?? FileManager.default.homeDirectoryForCurrentUser
+    let applicationSupportDirectory =
+      ClaudePaths(homeDirectory: homeDirectory, environment: environment)
+      .applicationSupportDirectory
+    let libraryService = PetLibraryService(
+      paths: PetLibraryPaths(applicationSupportDirectory: applicationSupportDirectory))
+
+    var petController: ApplicationPetController?
+    let petLibraryModel = PetLibraryViewModel(service: libraryService) {
+      petController?.requestRefresh()
+    }
+    let settingsModel = SettingsModel(petLibrary: petLibraryModel)
+    let settingsWindowController = SettingsWindowController(model: settingsModel)
+    self.settingsWindowController = settingsWindowController
+    petController = ApplicationPetController(
+      service: libraryService,
+      overlayController: overlayController,
+      settingsModel: settingsModel
+    )
+    self.petController = petController
+
+    settingsModel.setOverlayActionHandler { [weak overlayController] action in
+      overlayController?.handle(action)
+    }
+    overlayController.setStateHandler { [weak statusMenuController, weak settingsModel] state in
+      statusMenuController?.updateOverlayState(state)
+      settingsModel?.updateOverlayState(state)
+    }
+    statusMenuController.setSettingsHandler { [weak settingsWindowController] in
+      settingsWindowController?.show()
+    }
+    NSApp.mainMenu = ApplicationMainMenu.make(
+      settingsTarget: self, settingsAction: #selector(openSettings))
+
     do {
       let taskController = try ApplicationTaskController(
         statusMenuController: statusMenuController,
@@ -40,9 +67,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     } catch {
       statusMenuController.update(representative: nil)
     }
+    petController?.start()
+  }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+    settingsWindowController?.show()
+    return false
+  }
+
+  @objc private func openSettings() {
+    settingsWindowController?.show()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    petController?.stop()
     taskController?.stop()
   }
 }

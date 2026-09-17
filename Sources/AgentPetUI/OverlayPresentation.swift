@@ -61,20 +61,34 @@ public struct OverlayPresentation: Equatable, Sendable {
   public let petStatus: TaskVisualStatus
   public let additionalInterventionCount: Int
   public let showsPetCompletionDot: Bool
-  public let canExpandFromPet: Bool
+  public let canToggleExpansion: Bool
+  public let isTemporarilyExpanded: Bool
 
   public init(
     cards: [TaskCardPresentation],
     petStatus: TaskVisualStatus,
     additionalInterventionCount: Int,
     showsPetCompletionDot: Bool,
-    canExpandFromPet: Bool
+    canToggleExpansion: Bool,
+    isTemporarilyExpanded: Bool
   ) {
     self.cards = cards
     self.petStatus = petStatus
     self.additionalInterventionCount = additionalInterventionCount
     self.showsPetCompletionDot = showsPetCompletionDot
-    self.canExpandFromPet = canExpandFromPet
+    self.canToggleExpansion = canToggleExpansion
+    self.isTemporarilyExpanded = isTemporarilyExpanded
+  }
+
+  public static func preview(status: TaskVisualStatus) -> OverlayPresentation {
+    OverlayPresentation(
+      cards: [],
+      petStatus: status,
+      additionalInterventionCount: 0,
+      showsPetCompletionDot: false,
+      canToggleExpansion: false,
+      isTemporarilyExpanded: false
+    )
   }
 }
 
@@ -129,7 +143,8 @@ public struct OverlayPresenter: Sendable {
       additionalInterventionCount: additionalInterventions,
       showsPetCompletionDot: effectiveMode == .none
         && ordered.contains(where: \.hasUnseenCompletion),
-      canExpandFromPet: ordered.count > 1 && savedMode != .many
+      canToggleExpansion: ordered.count > 1 && savedMode != .many,
+      isTemporarilyExpanded: isTemporarilyExpanded && ordered.count > 1
     )
   }
 
