@@ -59,6 +59,7 @@ public final class StatusMenuController: NSObject {
   private var currentTask: AgentTaskSnapshot?
   private var openTaskHandler: ((AgentTaskSnapshot) -> Void)?
   private var overlayControlHandler: ((OverlayControlAction) -> Void)?
+  private var settingsHandler: (() -> Void)?
 
   public override init() {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -89,6 +90,10 @@ public final class StatusMenuController: NSObject {
 
   public func setOverlayControlHandler(_ handler: @escaping (OverlayControlAction) -> Void) {
     overlayControlHandler = handler
+  }
+
+  public func setSettingsHandler(_ handler: @escaping () -> Void) {
+    settingsHandler = handler
   }
 
   public func updateOverlayState(_ state: OverlayMenuState) {
@@ -138,6 +143,13 @@ public final class StatusMenuController: NSObject {
     )
     resetPosition.target = self
 
+    let settings = NSMenuItem(
+      title: "Settings…",
+      action: #selector(openSettings),
+      keyEquivalent: ApplicationMainMenu.settingsKeyEquivalent
+    )
+    settings.target = self
+
     let quit = NSMenuItem(title: "Quit", action: #selector(quitApplication), keyEquivalent: "q")
     quit.target = self
 
@@ -149,6 +161,7 @@ public final class StatusMenuController: NSObject {
     menu.addItem(cardModeItem)
     menu.addItem(resetPosition)
     menu.addItem(.separator())
+    menu.addItem(settings)
     menu.addItem(quit)
     statusItem.menu = menu
   }
@@ -180,5 +193,9 @@ public final class StatusMenuController: NSObject {
 
   @objc private func resetOverlayPosition() {
     overlayControlHandler?(.resetPosition)
+  }
+
+  @objc private func openSettings() {
+    settingsHandler?()
   }
 }

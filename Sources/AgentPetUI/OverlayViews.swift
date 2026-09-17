@@ -90,7 +90,14 @@ final class PetView: OverlayInteractionView {
   private var localMouseMonitor: Any?
   private let gazeRefreshGate = GazeRefreshGate()
   private var animationsActive = true
+  private var isAttachedToWindow = false
   private var reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+  // Animation and mouse monitoring run only while the view is both enabled and inside a window,
+  // so a discarded settings preview cannot keep timers alive.
+  private var isActive: Bool { animationsActive && isAttachedToWindow }
+  var isAnimating: Bool { animationTimer != nil }
+  var hasMouseMonitors: Bool { globalMouseMonitor != nil || localMouseMonitor != nil }
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
@@ -110,14 +117,24 @@ final class PetView: OverlayInteractionView {
     guard spritePackage !== package else { return }
     spritePackage = package
     spriteImages.removeAll(keepingCapacity: false)
-    updateGazeMonitoring()
-    refreshGaze()
-    restartAnimation()
+    applyActivity()
   }
 
   func setAnimationsActive(_ isActive: Bool) {
     guard animationsActive != isActive else { return }
     animationsActive = isActive
+    applyActivity()
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    let attached = window != nil
+    guard attached != isAttachedToWindow else { return }
+    isAttachedToWindow = attached
+    applyActivity()
+  }
+
+  private func applyActivity() {
     if isActive {
       updateGazeMonitoring()
       refreshGaze()
@@ -127,6 +144,8 @@ final class PetView: OverlayInteractionView {
       animationTimer = nil
       stopGazeMonitoring()
       gazePose = nil
+      currentAnimationFrame = nil
+      needsDisplay = true
     }
   }
 
@@ -134,7 +153,7 @@ final class PetView: OverlayInteractionView {
     status = presentation.petStatus
     interventionCount = presentation.additionalInterventionCount
     showsCompletionDot = presentation.showsPetCompletionDot
-    canExpand = presentation.canExpandFromPet
+    canExpand = presentation.canToggleExpansion
     setAccessibilityRole(canExpand ? .button : .group)
     setAccessibilityLabel("Oh My Agent Pet, \(status.label)")
     setAccessibilityHelp(canExpand ? "Show or hide all agent tasks" : "Agent task status")
@@ -157,33 +176,11 @@ final class PetView: OverlayInteractionView {
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
     if drawSprite() {
-      drawStatusMark(in: bounds.insetBy(dx: 8, dy: 8))
+      VectorPetRenderer.drawStatusMark(in: bounds.insetBy(dx: 8, dy: 8), status: status)
       drawBadge()
       return
     }
-    let bodyRect = bounds.insetBy(dx: 8, dy: 8)
-    let earSize: CGFloat = 20
-    let leftEar = NSBezierPath()
-    leftEar.move(to: NSPoint(x: bodyRect.minX + 7, y: bodyRect.maxY - 17))
-    leftEar.line(to: NSPoint(x: bodyRect.minX + 13, y: bodyRect.maxY + earSize - 8))
-    leftEar.line(to: NSPoint(x: bodyRect.minX + 28, y: bodyRect.maxY - 10))
-    leftEar.close()
-    let rightEar = NSBezierPath()
-    rightEar.move(to: NSPoint(x: bodyRect.maxX - 28, y: bodyRect.maxY - 10))
-    rightEar.line(to: NSPoint(x: bodyRect.maxX - 13, y: bodyRect.maxY + earSize - 8))
-    rightEar.line(to: NSPoint(x: bodyRect.maxX - 7, y: bodyRect.maxY - 17))
-    rightEar.close()
-    DesignTokens.petBody.setFill()
-    leftEar.fill()
-    rightEar.fill()
-    NSBezierPath(roundedRect: bodyRect, xRadius: 25, yRadius: 25).fill()
-
-    DesignTokens.petFace.setFill()
-    let eyeY = bodyRect.midY + 7
-    NSBezierPath(ovalIn: NSRect(x: bodyRect.midX - 17, y: eyeY, width: 6, height: 8)).fill()
-    NSBezierPath(ovalIn: NSRect(x: bodyRect.midX + 11, y: eyeY, width: 6, height: 8)).fill()
-    drawMouth(in: bodyRect)
-    drawStatusMark(in: bodyRect)
+    VectorPetRenderer.draw(in: bounds, status: status)
     drawBadge()
   }
 
@@ -191,9 +188,7 @@ final class PetView: OverlayInteractionView {
     let nextValue = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     guard nextValue != reducedMotion else { return }
     reducedMotion = nextValue
-    updateGazeMonitoring()
-    refreshGaze()
-    restartAnimation()
+    applyActivity()
   }
 
   private func restartAnimation() {
@@ -210,7 +205,7 @@ final class PetView: OverlayInteractionView {
   @objc private func refreshAnimationFrame() {
     animationTimer?.invalidate()
     animationTimer = nil
-    guard spritePackage != nil, animationsActive else {
+    guard spritePackage != nil, isActive else {
       currentAnimationFrame = nil
       needsDisplay = true
       return
@@ -280,7 +275,7 @@ final class PetView: OverlayInteractionView {
 
   private func updateGazeMonitoring() {
     let shouldMonitor =
-      animationsActive
+      isActive
       && !reducedMotion
       && spritePackage?.version.supportsGaze == true
       && [.idle, .running, .waving].contains(animationState)
@@ -321,7 +316,7 @@ final class PetView: OverlayInteractionView {
   }
 
   private func refreshGaze() {
-    guard animationsActive,
+    guard isActive,
       !reducedMotion,
       let spritePackage,
       let window
@@ -347,38 +342,6 @@ final class PetView: OverlayInteractionView {
     guard gazePose != pose else { return }
     gazePose = pose
     needsDisplay = true
-  }
-
-  private func drawMouth(in rect: NSRect) {
-    let path = NSBezierPath()
-    path.lineWidth = 2.2
-    path.lineCapStyle = .round
-    DesignTokens.petFace.setStroke()
-    switch status {
-    case .failed, .stopped:
-      path.move(to: NSPoint(x: rect.midX - 6, y: rect.midY - 8))
-      path.curve(
-        to: NSPoint(x: rect.midX + 6, y: rect.midY - 8),
-        controlPoint1: NSPoint(x: rect.midX - 2, y: rect.midY - 2),
-        controlPoint2: NSPoint(x: rect.midX + 2, y: rect.midY - 2)
-      )
-    case .inputNeeded:
-      path.appendOval(in: NSRect(x: rect.midX - 3, y: rect.midY - 10, width: 6, height: 7))
-    default:
-      path.move(to: NSPoint(x: rect.midX - 7, y: rect.midY - 5))
-      path.curve(
-        to: NSPoint(x: rect.midX + 7, y: rect.midY - 5),
-        controlPoint1: NSPoint(x: rect.midX - 3, y: rect.midY - 12),
-        controlPoint2: NSPoint(x: rect.midX + 3, y: rect.midY - 12)
-      )
-    }
-    path.stroke()
-  }
-
-  private func drawStatusMark(in rect: NSRect) {
-    let color = statusColor(status)
-    color.setFill()
-    NSBezierPath(ovalIn: NSRect(x: rect.minX + 5, y: rect.minY + 5, width: 9, height: 9)).fill()
   }
 
   private func drawBadge() {
@@ -572,9 +535,16 @@ final class TaskListDocumentView: NSView {
 @MainActor
 final class OverlayContainerView: NSView {
   let petView = PetView(frame: NSRect(origin: .zero, size: DesignTokens.petSize))
+  let disclosureButton = NSButton(title: "", target: nil, action: nil)
   private let scrollView = NSScrollView()
   private let taskListView = TaskListDocumentView()
   private(set) var preferredSize = DesignTokens.petSize
+  private(set) var isPetHidden = false
+  private var animationsActive = true
+  private var cardsHeight: CGFloat = 0
+  private var toggleExpansion: (() -> Void)?
+
+  var isEmpty: Bool { isPetHidden && scrollView.isHidden }
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
@@ -584,8 +554,15 @@ final class OverlayContainerView: NSView {
     scrollView.hasHorizontalScroller = false
     scrollView.autohidesScrollers = true
     scrollView.documentView = taskListView
+    disclosureButton.isBordered = false
+    disclosureButton.imagePosition = .imageOnly
+    disclosureButton.contentTintColor = DesignTokens.textMuted
+    disclosureButton.target = self
+    disclosureButton.action = #selector(disclosureClicked)
+    disclosureButton.isHidden = true
     addSubview(petView)
     addSubview(scrollView)
+    addSubview(disclosureButton)
   }
 
   required init?(coder: NSCoder) { nil }
@@ -595,7 +572,17 @@ final class OverlayContainerView: NSView {
   }
 
   func setAnimationsActive(_ isActive: Bool) {
-    petView.setAnimationsActive(isActive)
+    animationsActive = isActive
+    petView.setAnimationsActive(isActive && !isPetHidden)
+  }
+
+  // `none` hides only the pet. Cards keep their size, position and drag behavior.
+  func setPetHidden(_ hidden: Bool) {
+    guard isPetHidden != hidden else { return }
+    isPetHidden = hidden
+    petView.isHidden = hidden
+    petView.setAnimationsActive(animationsActive && !hidden)
+    needsLayout = true
   }
 
   func update(
@@ -605,21 +592,39 @@ final class OverlayContainerView: NSView {
     onDragEnded: @escaping () -> Void
   ) {
     petView.update(with: presentation)
-    petView.onClick = presentation.canExpandFromPet ? onPetClick : nil
+    petView.onClick = presentation.canToggleExpansion ? onPetClick : nil
     petView.onDragEnded = onDragEnded
+    toggleExpansion = onPetClick
     taskListView.update(cards: presentation.cards, onOpen: onOpen, onDragEnded: onDragEnded)
-    let cardHeight = min(
+    cardsHeight = min(
       taskListView.contentHeight,
       CGFloat(DesignTokens.maximumVisibleCards) * DesignTokens.cardHeight
         + CGFloat(DesignTokens.maximumVisibleCards - 1) * DesignTokens.spaceS
     )
-    scrollView.hasVerticalScroller = taskListView.contentHeight > cardHeight
+    scrollView.hasVerticalScroller = taskListView.contentHeight > cardsHeight
     scrollView.isHidden = presentation.cards.isEmpty
-    preferredSize = NSSize(
-      width: DesignTokens.petSize.width
-        + (presentation.cards.isEmpty ? 0 : DesignTokens.spaceM + DesignTokens.cardWidth),
-      height: max(DesignTokens.petSize.height, cardHeight)
+    let showsDisclosure =
+      isPetHidden && presentation.canToggleExpansion && !presentation.cards.isEmpty
+    disclosureButton.isHidden = !showsDisclosure
+    disclosureButton.image = NSImage(
+      systemSymbolName: presentation.isTemporarilyExpanded ? "chevron.up" : "chevron.down",
+      accessibilityDescription: nil
     )
+    disclosureButton.setAccessibilityLabel(
+      presentation.isTemporarilyExpanded ? "Show fewer agent tasks" : "Show all agent tasks")
+    let disclosureHeight = showsDisclosure ? DesignTokens.cardDisclosureHeight : 0
+    if isPetHidden {
+      preferredSize = NSSize(
+        width: presentation.cards.isEmpty ? 0 : DesignTokens.cardWidth,
+        height: presentation.cards.isEmpty ? 0 : cardsHeight + disclosureHeight
+      )
+    } else {
+      preferredSize = NSSize(
+        width: DesignTokens.petSize.width
+          + (presentation.cards.isEmpty ? 0 : DesignTokens.spaceM + DesignTokens.cardWidth),
+        height: max(DesignTokens.petSize.height, cardsHeight)
+      )
+    }
     frame.size = preferredSize
     needsLayout = true
   }
@@ -628,18 +633,31 @@ final class OverlayContainerView: NSView {
     super.layout()
     petView.frame = NSRect(origin: .zero, size: DesignTokens.petSize)
     guard !scrollView.isHidden else { return }
+    let cardsX = isPetHidden ? 0 : DesignTokens.petSize.width + DesignTokens.spaceM
     scrollView.frame = NSRect(
-      x: DesignTokens.petSize.width + DesignTokens.spaceM,
+      x: cardsX,
       y: 0,
       width: DesignTokens.cardWidth,
-      height: preferredSize.height
+      height: isPetHidden ? cardsHeight : preferredSize.height
     )
     taskListView.frame.size.width = DesignTokens.cardWidth
+    if !disclosureButton.isHidden {
+      disclosureButton.frame = NSRect(
+        x: cardsX,
+        y: cardsHeight,
+        width: DesignTokens.cardWidth,
+        height: DesignTokens.cardDisclosureHeight
+      )
+    }
+  }
+
+  @objc private func disclosureClicked() {
+    toggleExpansion?()
   }
 }
 
 @MainActor
-private func statusColor(_ status: TaskVisualStatus) -> NSColor {
+func statusColor(_ status: TaskVisualStatus) -> NSColor {
   switch status {
   case .inputNeeded: DesignTokens.statusWaiting
   case .working: DesignTokens.statusWorking

@@ -10,6 +10,7 @@ let package = Package(
   products: [
     .library(name: "AgentPetCore", targets: ["AgentPetCore"]),
     .library(name: "AgentPetSprites", targets: ["AgentPetSprites"]),
+    .library(name: "AgentPetLibrary", targets: ["AgentPetLibrary"]),
     .library(name: "AgentPetEvents", targets: ["AgentPetEvents"]),
     .library(name: "AgentPetNavigation", targets: ["AgentPetNavigation"]),
     .library(name: "AgentPetProviders", targets: ["AgentPetProviders"]),
@@ -21,6 +22,10 @@ let package = Package(
   targets: [
     .target(name: "AgentPetCore"),
     .target(name: "AgentPetSprites"),
+    .target(
+      name: "AgentPetLibrary",
+      dependencies: ["AgentPetSprites"]
+    ),
     .target(name: "AgentPetEvents"),
     .target(
       name: "AgentPetNavigation",
@@ -40,18 +45,25 @@ let package = Package(
     ),
     .target(
       name: "AgentPetUI",
-      dependencies: ["AgentPetCore", "AgentPetSprites"]
+      dependencies: ["AgentPetCore", "AgentPetLibrary", "AgentPetSprites"]
     ),
     .target(
       name: "OmapetSupport",
-      dependencies: ["AgentPetClaude", "AgentPetCodex", "AgentPetCore", "AgentPetEvents"]
+      dependencies: [
+        "AgentPetClaude", "AgentPetCodex", "AgentPetCore", "AgentPetEvents", "AgentPetLibrary",
+      ]
     ),
     .executableTarget(
       name: "OhMyAgentPetApp",
       dependencies: [
-        "AgentPetClaude", "AgentPetCodex", "AgentPetCore", "AgentPetNavigation",
-        "AgentPetProviders", "AgentPetSprites", "AgentPetUI",
+        "AgentPetClaude", "AgentPetCodex", "AgentPetCore", "AgentPetLibrary",
+        "AgentPetNavigation", "AgentPetProviders", "AgentPetSprites", "AgentPetUI",
       ]
+    ),
+    .target(
+      name: "AgentPetTestSupport",
+      dependencies: ["AgentPetSprites"],
+      path: "Tests/AgentPetTestSupport"
     ),
     .executableTarget(
       name: "OmapetCLI",
@@ -63,7 +75,11 @@ let package = Package(
     ),
     .testTarget(
       name: "AgentPetSpritesTests",
-      dependencies: ["AgentPetSprites"]
+      dependencies: ["AgentPetSprites", "AgentPetTestSupport"]
+    ),
+    .testTarget(
+      name: "AgentPetLibraryTests",
+      dependencies: ["AgentPetLibrary", "AgentPetSprites", "AgentPetTestSupport"]
     ),
     .testTarget(
       name: "AgentPetEventsTests",
@@ -87,11 +103,13 @@ let package = Package(
     ),
     .testTarget(
       name: "AgentPetUITests",
-      dependencies: ["AgentPetCore", "AgentPetSprites", "AgentPetUI"]
+      dependencies: [
+        "AgentPetCore", "AgentPetLibrary", "AgentPetSprites", "AgentPetTestSupport", "AgentPetUI",
+      ]
     ),
     .testTarget(
       name: "OmapetSupportTests",
-      dependencies: ["OmapetSupport"]
+      dependencies: ["AgentPetTestSupport", "OmapetSupport"]
     ),
   ]
 )

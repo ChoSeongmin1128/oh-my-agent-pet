@@ -16,15 +16,31 @@ Oh My Agent Pet은 Claude Code와 Codex 작업 상태를 한 마리의 macOS 데
 - 대표 작업 메뉴 행에서 Codex·Claude Desktop 대화, iTerm 세션 또는 Terminal 탭으로 이동
 - 포커스를 빼앗지 않는 데스크톱 펫과 대표 작업 카드, 한 개·전체·없음 표시 모드
 - 펫·카드 함께 드래그, 위치 저장·초기화와 전체 작업 임시 펼치기
+- 설정 창의 일반·펫·카드 pane과 메뉴의 `Settings…`
+- 사용자 펫 라이브러리: package folder, codex-pet ZIP과 codex-pets.net 링크 설치, 선택, 제거와 라이선스·출처 표시
+- 앱과 같은 라이브러리를 쓰는 `omapet pet` CLI
 - Apple Silicon과 Intel을 함께 검증하는 GitHub Actions CI
 
-현재 소스 코드는 앱 기반과 Claude·Codex 상태 관찰, CLI 연결, 대표 작업 이동, 첫 펫·카드 화면과 codex-pets 스프라이트 엔진까지 구현한 개발 버전입니다. 사용자 펫 설치·선택, 완료 확인, 전체 설정 화면과 서명된 업데이트는 아직 구현 중입니다.
+현재 소스 코드는 앱 기반과 Claude·Codex 상태 관찰, CLI 연결, 대표 작업 이동, 펫·카드 화면, codex-pets 스프라이트 엔진과 사용자 펫 라이브러리까지 구현한 개발 버전입니다. 완료 확인, 연동·개인정보 설정 pane, 카드 배치·겹침 설정과 서명된 업데이트는 아직 구현 중입니다.
 
 ## 펫과 작업 카드
 
 새 실행에서는 한 마리의 펫과 대표 작업 카드 한 개를 표시합니다. 메뉴바에서 카드를 한 개, 전체 또는 표시 안 함으로 바꿀 수 있으며 선택은 다음 실행에도 유지됩니다. 펫을 빠르게 클릭하면 저장한 모드와 전체 작업 목록을 임시로 전환합니다. 펫이나 카드를 드래그하면 함께 이동하고 메뉴의 `Reset Pet Position`으로 기본 위치를 복원할 수 있습니다.
 
-현재 기본 펫은 프로젝트 코드로 그리는 원본 벡터 펫입니다. codex-pets v1·v2 패키지 검증과 상태별 애니메이션·v2 시선 렌더러는 구현되어 있으며, 사용자 펫 선택과 설치 UI는 후속 구현 범위입니다.
+기본 펫은 프로젝트 코드로 그리는 원본 벡터 펫입니다. codex-pets v1·v2 패키지를 설치하면 상태별 애니메이션과 v2 마우스 시선을 사용합니다.
+
+## 펫 라이브러리
+
+메뉴의 `Settings…`로 설정 창을 열고 `Pet` pane에서 펫을 관리합니다.
+
+- `Add Pet…`으로 `pet.json`과 spritesheet가 있는 package folder 또는 codex-pet ZIP을 고르거나, `Add from Link…`에 `https://codex-pets.net/#/pets/<id>` 링크를 붙입니다. 링크 다운로드는 `Continue`를 눌렀을 때만 시작합니다.
+- 설치 전 검토 화면에서 이름, 출처, 라이선스 상태와 실제 상태별 애니메이션을 확인하고 `Install` 또는 `Install and Use`를 선택합니다.
+- 목록에서 원본 벡터 펫, 설치한 펫, `No pet`을 `Use`로 선택합니다. `No pet`은 펫만 숨기고 카드와 메뉴바는 유지하며, 작업이 여러 개일 때 카드 위의 작은 화살표로 전체 작업을 펼칩니다.
+- 보조 메뉴에서 Finder 표시, 정보 보기, 제거를 사용합니다. 제거는 앱 라이브러리 사본만 지우고 원본 folder, ZIP과 갤러리 펫은 바꾸지 않습니다.
+- 라이선스는 `License declared`(package나 매니페스트가 표기), `No license info`(표기 없음)로 구분합니다. 표기가 없어도 로컬 설치는 가능하지만 Oh My Agent Pet이 재배포 권한을 주는 것은 아니며, 설치한 펫은 프로젝트 MIT License로 바뀌지 않습니다.
+- 선택한 펫이 손상되거나 사라지면 원본 벡터 펫으로 돌아가고 설정에 조치 필요를 표시합니다.
+
+단독 PNG/WebP 이미지는 버전·이름·출처를 판정할 수 없어 받지 않습니다. 설치한 펫은 `~/Library/Application Support/Oh My Agent Pet/Pets`에 복사되고, 선택은 같은 위치의 `selection.json`에 저장되어 CLI와 앱이 공유합니다.
 
 ## 목표 기능
 
@@ -65,6 +81,19 @@ omapet setup disconnect codex
 ```
 
 `--dry-run`은 현재 설정과 예상 변경을 확인하고 파일을 수정하지 않습니다. 연결과 해제는 Oh My Agent Pet marker가 있는 hook만 대상으로 하며 다른 hook과 설정을 보존합니다. Codex 연결은 현재 설치된 Codex가 계산한 각 hook의 정확한 해시만 신뢰하고, 연결 해제 시 해당 신뢰 항목만 정리합니다.
+
+펫 라이브러리는 설정 창과 같은 서비스를 CLI로도 제공합니다.
+
+```bash
+omapet pet list --json
+omapet pet inspect <package-folder|codex-pet.zip|https://codex-pets.net/#/pets/ID> --json
+omapet pet install <package-folder|codex-pet.zip|https://codex-pets.net/#/pets/ID> --dry-run --json
+omapet pet install <package-folder|codex-pet.zip|https://codex-pets.net/#/pets/ID> --json
+omapet pet select <original|none|pet-id> --json
+omapet pet remove <pet-id> --json
+```
+
+`inspect`와 `install --dry-run`은 라이브러리와 선택을 바꾸지 않습니다. 오류는 `unsupported_version`, `version_dimension_mismatch`, `missing_required_frame`, `damaged_image`, `unsafe_package`, `oversized_package`, `url_not_allowed`처럼 안정적인 코드로 반환하며 설정 창도 같은 코드를 사용합니다. URL은 `https://codex-pets.net`만 지원하고 같은 host 안의 redirect만 최대 3회 따라갑니다.
 
 ## 작업으로 돌아가기
 

@@ -1,6 +1,7 @@
 import AgentPetClaude
 import AgentPetCodex
 import AgentPetEvents
+import AgentPetLibrary
 import Foundation
 
 public enum OmapetCommand: Equatable, Sendable {
@@ -15,6 +16,11 @@ public enum OmapetCommand: Equatable, Sendable {
   case setupDisconnectCodex(json: Bool, dryRun: Bool)
   case hookClaude
   case hookCodex
+  case petList(json: Bool)
+  case petInspect(source: String, json: Bool)
+  case petInstall(source: String, json: Bool, dryRun: Bool)
+  case petSelect(identifier: String, json: Bool)
+  case petRemove(recordID: String, json: Bool)
 }
 
 public struct OmapetCommandResult: Equatable, Sendable {
@@ -37,11 +43,14 @@ public struct OmapetCommandRunner: Sendable {
   private let codexSetupService: CodexSetupService
   private let claudeHookRecorder: AgentHookRecorder
   private let codexHookRecorder: AgentHookRecorder
+  private let petCommands: OmapetPetCommands
 
   public init(
     environment: [String: String] = ProcessInfo.processInfo.environment,
     homeDirectory: URL? = nil,
     executableURL: URL? = nil,
+    currentDirectory: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
+    petPackageDownloader: PetPackageDownloader = URLSessionPetPackageDownloader(),
     now: @escaping @Sendable () -> Date = Date.init
   ) {
     let resolvedHome =
@@ -71,6 +80,14 @@ public struct OmapetCommandRunner: Sendable {
     codexHookRecorder = AgentHookRecorder(
       provider: .codex,
       applicationSupportDirectory: paths.applicationSupportDirectory
+    )
+    petCommands = OmapetPetCommands(
+      service: PetLibraryService(
+        paths: PetLibraryPaths(applicationSupportDirectory: paths.applicationSupportDirectory),
+        downloader: petPackageDownloader,
+        now: now
+      ),
+      currentDirectory: currentDirectory
     )
   }
 
@@ -128,7 +145,23 @@ public struct OmapetCommandRunner: Sendable {
       return .hookClaude
     case ["hook", "codex"] where !json && !dryRun:
       return .hookCodex
+    case ["pet", "list"] where !dryRun:
+      return .petList(json: json)
     default:
+      if positional.count == 3, positional[0] == "pet" {
+        switch positional[1] {
+        case "inspect" where !dryRun:
+          return .petInspect(source: positional[2], json: json)
+        case "install":
+          return .petInstall(source: positional[2], json: json, dryRun: dryRun)
+        case "select" where !dryRun:
+          return .petSelect(identifier: positional[2], json: json)
+        case "remove" where !dryRun:
+          return .petRemove(recordID: positional[2], json: json)
+        default:
+          break
+        }
+      }
       throw OmapetCLIError.unsupportedArguments(positional)
     }
   }
@@ -216,6 +249,19 @@ public struct OmapetCommandRunner: Sendable {
     case .hookCodex:
       _ = try? codexHookRecorder.record(input: standardInput)
       return OmapetCommandResult(exitCode: 0)
+    case .petList(let json):
+      return petCommands.list(json: json)
+    case .petInspect(let source, let json):
+      return petCommands.inspect(source: source, json: json, dryRun: nil)
+    case .petInstall(let source, let json, let dryRun):
+      if dryRun {
+        return petCommands.inspect(source: source, json: json, dryRun: true)
+      }
+      return petCommands.install(source: source, json: json)
+    case .petSelect(let identifier, let json):
+      return petCommands.select(identifier: identifier, json: json)
+    case .petRemove(let recordID, let json):
+      return petCommands.remove(recordID: recordID, json: json)
     }
   }
 
@@ -254,20 +300,7 @@ public struct OmapetCommandRunner: Sendable {
   }
 
   private func jsonResult(_ value: some Encodable, exitCode: Int32 = 0) -> OmapetCommandResult {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-    do {
-      let data = try encoder.encode(value)
-      return OmapetCommandResult(
-        exitCode: exitCode,
-        standardOutput: String(decoding: data, as: UTF8.self) + "\n"
-      )
-    } catch {
-      return OmapetCommandResult(
-        exitCode: 70,
-        standardError: "Failed to encode output.\n"
-      )
-    }
+    OmapetJSON.result(value, exitCode: exitCode)
   }
 
   private static let helpText = """
@@ -280,6 +313,11 @@ public struct OmapetCommandRunner: Sendable {
       omapet setup disconnect claude [--dry-run] [--json]
       omapet setup connect codex [--dry-run] [--json]
       omapet setup disconnect codex [--dry-run] [--json]
+      omapet pet list [--json]
+      omapet pet inspect <package-folder|codex-pet.zip|codex-pets.net-url> [--json]
+      omapet pet install <package-folder|codex-pet.zip|codex-pets.net-url> [--dry-run] [--json]
+      omapet pet select <original|none|pet-id> [--json]
+      omapet pet remove <pet-id> [--json]
 
     """
 }

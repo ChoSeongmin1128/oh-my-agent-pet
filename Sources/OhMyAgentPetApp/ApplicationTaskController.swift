@@ -55,9 +55,6 @@ final class ApplicationTaskController {
     overlayController.setOpenTaskHandler { [weak self] task in
       self?.open(task)
     }
-    overlayController.setStateHandler { [weak statusMenuController] state in
-      statusMenuController?.updateOverlayState(state)
-    }
   }
 
   func start() throws {

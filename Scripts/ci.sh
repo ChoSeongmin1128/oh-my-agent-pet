@@ -53,6 +53,17 @@ assert "must-not-be-stored" not in lines[0]
 PY
 HOME="$CLI_HOME" CLAUDE_CONFIG_DIR="$CLAUDE_ROOT" \
     "$BIN_DIR/omapet" setup disconnect claude --json >/dev/null
+HOME="$CLI_HOME" "$BIN_DIR/omapet" pet list --json | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+assert value["ok"] is True
+assert value["pets"] == []
+assert value["selection"] == {"kind": "original"}
+'
+test ! -e "$CLI_HOME/Library/Application Support/Oh My Agent Pet/Pets"
+PET_ERROR_OUTPUT="$(HOME="$CLI_HOME" "$BIN_DIR/omapet" pet install "$TEMP_ROOT/does-not-exist" --json || true)"
+printf '%s' "$PET_ERROR_OUTPUT" \
+    | python3 -c 'import json, sys; assert json.load(sys.stdin)["code"] == "source_unavailable"'
 
 OUTPUT_ROOT="$TEMP_ROOT" "$ROOT_DIR/Scripts/build-app.sh" debug >/dev/null
 APP_DIR="$TEMP_ROOT/Oh My Agent Pet.app"

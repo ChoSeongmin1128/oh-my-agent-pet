@@ -2,8 +2,10 @@ import AppKit
 
 @MainActor
 public enum DesignTokens {
+  public static let spaceXS: CGFloat = 4
   public static let spaceS: CGFloat = 6
   public static let spaceM: CGFloat = 10
+  public static let spaceL: CGFloat = 16
 
   public static let petSize = NSSize(width: 78, height: 78)
   public static let cardWidth: CGFloat = 268
@@ -19,7 +21,9 @@ public enum DesignTokens {
   public static let resultDotSize: CGFloat = 8
   public static let maximumVisibleCards = 5
   public static let screenMargin: CGFloat = 18
+  public static let cardDisclosureHeight: CGFloat = 16
   public static let cornerCard: CGFloat = 14
+  public static let cornerControl: CGFloat = 6
   public static let strokeSubtle: CGFloat = 1
   public static let dragActivationDistance: CGFloat = 5
   public static let longPressDuration: TimeInterval = 0.35
@@ -44,4 +48,15 @@ public enum DesignTokens {
   public static let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
   public static let statusFont = NSFont.systemFont(ofSize: 11, weight: .medium)
   public static let metadataFont = NSFont.systemFont(ofSize: 10, weight: .medium)
+
+  public static let settingsWindowSize = NSSize(width: 580, height: 540)
+  public static let settingsPaneInset: CGFloat = 20
+  public static let settingsSectionSpacing: CGFloat = 18
+  public static let settingsRowSpacing: CGFloat = 8
+  public static let settingsRowMinimumHeight: CGFloat = 28
+  public static let settingsPreviewSize: CGFloat = 156
+  public static let settingsThumbnailSize: CGFloat = 40
+  public static let settingsChipCornerRadius: CGFloat = 5
+  public static let settingsSectionCornerRadius: CGFloat = 10
+  public static let settingsSurfaceOpacity: CGFloat = 0.5
 }
