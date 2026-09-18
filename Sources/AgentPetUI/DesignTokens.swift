@@ -22,7 +22,8 @@ public enum DesignTokens {
   public static let maximumVisibleCards = 5
   public static let screenMargin: CGFloat = 18
   public static let cardDisclosureHeight: CGFloat = 16
-  public static let cornerCard: CGFloat = 14
+  public static let cornerCard: CGFloat = 18
+  public static let cardDepthLayerOffset: CGFloat = 4
   public static let cornerControl: CGFloat = 6
   public static let strokeSubtle: CGFloat = 1
   public static let dragActivationDistance: CGFloat = 5
@@ -31,6 +32,7 @@ public enum DesignTokens {
   public static let textPrimary = NSColor.white
   public static let textMuted = NSColor.white.withAlphaComponent(0.52)
   public static let surfaceFloating = NSColor(calibratedWhite: 0.105, alpha: 1)
+  public static let surfaceCardDepth = NSColor(calibratedWhite: 0.16, alpha: 1)
   public static let strokeColor = NSColor.white.withAlphaComponent(0.10)
   public static let statusWorking = NSColor.systemBlue
   public static let statusWaiting = NSColor.systemYellow

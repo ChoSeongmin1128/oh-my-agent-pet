@@ -63,4 +63,16 @@ final class SettingsWindowControllerTests: XCTestCase {
     controller.hostingController?.view.window?.close()
     XCTAssertNil(controller.hostingController)
   }
+
+  func testSettingsModelRoutesLayoutAndDepthHintThroughOverlayActions() {
+    let service = PetLibraryService(paths: PetLibraryPaths(applicationSupportDirectory: root))
+    let model = SettingsModel(petLibrary: PetLibraryViewModel(service: service) {})
+    var actions: [OverlayControlAction] = []
+    model.setOverlayActionHandler { actions.append($0) }
+
+    model.perform(.setLayout(.horizontal))
+    model.perform(.setCardDepthHintEnabled(false))
+
+    XCTAssertEqual(actions, [.setLayout(.horizontal), .setCardDepthHintEnabled(false)])
+  }
 }

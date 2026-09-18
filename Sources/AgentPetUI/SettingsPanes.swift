@@ -81,6 +81,40 @@ struct CardSettingsPane: View {
         .labelsHidden()
         .frame(width: 200)
       }
+      Divider()
+      SettingsRow(
+        "Layout",
+        description: "Places the pet above the cards by default, or beside them."
+      ) {
+        Picker(
+          "",
+          selection: Binding(
+            get: { model.overlayState.layout },
+            set: { model.perform(.setLayout($0)) }
+          )
+        ) {
+          Text("Vertical").tag(OverlayLayout.vertical)
+          Text("Side by Side").tag(OverlayLayout.horizontal)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 200)
+      }
+      Divider()
+      SettingsRow(
+        "Stack other tasks",
+        description: "In One mode, shows a shallow decorative stack when more tasks exist."
+      ) {
+        Toggle(
+          "",
+          isOn: Binding(
+            get: { model.overlayState.isCardDepthHintEnabled },
+            set: { model.perform(.setCardDepthHintEnabled($0)) }
+          )
+        )
+        .labelsHidden()
+        .toggleStyle(.switch)
+      }
     }
   }
 }

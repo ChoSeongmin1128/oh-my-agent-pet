@@ -451,11 +451,7 @@ final class TaskCardView: OverlayInteractionView {
   }
 
   override func draw(_ dirtyRect: NSRect) {
-    let cardPath = NSBezierPath(
-      roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
-      xRadius: DesignTokens.cornerCard,
-      yRadius: DesignTokens.cornerCard
-    )
+    let cardPath = CardShape.path(in: bounds)
     DesignTokens.surfaceFloating.setFill()
     cardPath.fill()
     DesignTokens.strokeColor.setStroke()
@@ -486,6 +482,19 @@ final class TaskCardView: OverlayInteractionView {
         )
       ).fill()
     }
+  }
+}
+
+@MainActor
+enum CardShape {
+  static var cornerRadius: CGFloat { DesignTokens.cornerCard }
+
+  static func path(in bounds: NSRect) -> NSBezierPath {
+    NSBezierPath(
+      roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+      xRadius: cornerRadius,
+      yRadius: cornerRadius
+    )
   }
 }
 
@@ -533,15 +542,60 @@ final class TaskListDocumentView: NSView {
 }
 
 @MainActor
+final class CardDepthHintView: NSView {
+  private(set) var layerCount = 0
+
+  override init(frame frameRect: NSRect) {
+    super.init(frame: frameRect)
+    setAccessibilityElement(false)
+    isHidden = true
+  }
+
+  required init?(coder: NSCoder) { nil }
+
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+  func setLayerCount(_ count: Int) {
+    let boundedCount = min(max(count, 0), CardDepthHintPolicy.maximumLayers)
+    guard layerCount != boundedCount else { return }
+    layerCount = boundedCount
+    isHidden = boundedCount == 0
+    needsDisplay = true
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    guard layerCount > 0 else { return }
+    for layer in 0..<layerCount {
+      let offset = CGFloat(layer) * DesignTokens.cardDepthLayerOffset
+      let rect = NSRect(
+        x: 0,
+        y: 0,
+        width: bounds.width,
+        height: DesignTokens.cardHeight
+      ).offsetBy(dx: 0, dy: offset)
+      let path = CardShape.path(in: rect)
+      DesignTokens.surfaceCardDepth.setFill()
+      path.fill()
+      DesignTokens.strokeColor.setStroke()
+      path.lineWidth = DesignTokens.strokeSubtle
+      path.stroke()
+    }
+  }
+}
+
+@MainActor
 final class OverlayContainerView: NSView {
   let petView = PetView(frame: NSRect(origin: .zero, size: DesignTokens.petSize))
   let disclosureButton = NSButton(title: "", target: nil, action: nil)
+  let cardDepthHintView = CardDepthHintView(frame: .zero)
   private let scrollView = NSScrollView()
   private let taskListView = TaskListDocumentView()
   private(set) var preferredSize = DesignTokens.petSize
   private(set) var isPetHidden = false
+  private(set) var layoutMode: OverlayLayout = .defaultValue
   private var animationsActive = true
   private var cardsHeight: CGFloat = 0
+  private var cardDepthLayerCount = 0
   private var toggleExpansion: (() -> Void)?
 
   var isEmpty: Bool { isPetHidden && scrollView.isHidden }
@@ -561,6 +615,7 @@ final class OverlayContainerView: NSView {
     disclosureButton.action = #selector(disclosureClicked)
     disclosureButton.isHidden = true
     addSubview(petView)
+    addSubview(cardDepthHintView)
     addSubview(scrollView)
     addSubview(disclosureButton)
   }
@@ -587,10 +642,13 @@ final class OverlayContainerView: NSView {
 
   func update(
     presentation: OverlayPresentation,
+    layout: OverlayLayout = .defaultValue,
+    isCardDepthHintEnabled: Bool = OverlayPreferences.defaultCardDepthHintEnabled,
     onOpen: @escaping (AgentTaskSnapshot) -> Void,
     onPetClick: @escaping () -> Void,
     onDragEnded: @escaping () -> Void
   ) {
+    layoutMode = layout
     petView.update(with: presentation)
     petView.onClick = presentation.canToggleExpansion ? onPetClick : nil
     petView.onDragEnded = onDragEnded
@@ -603,6 +661,10 @@ final class OverlayContainerView: NSView {
     )
     scrollView.hasVerticalScroller = taskListView.contentHeight > cardsHeight
     scrollView.isHidden = presentation.cards.isEmpty
+    cardDepthLayerCount =
+      isCardDepthHintEnabled && !presentation.isTemporarilyExpanded
+      ? min(presentation.cardDepthLayerCount, CardDepthHintPolicy.maximumLayers) : 0
+    cardDepthHintView.setLayerCount(cardDepthLayerCount)
     let showsDisclosure =
       isPetHidden && presentation.canToggleExpansion && !presentation.cards.isEmpty
     disclosureButton.isHidden = !showsDisclosure
@@ -613,17 +675,29 @@ final class OverlayContainerView: NSView {
     disclosureButton.setAccessibilityLabel(
       presentation.isTemporarilyExpanded ? "Show fewer agent tasks" : "Show all agent tasks")
     let disclosureHeight = showsDisclosure ? DesignTokens.cardDisclosureHeight : 0
+    let depthHeight = CGFloat(cardDepthLayerCount) * DesignTokens.cardDepthLayerOffset
+    let cardRegionHeight = cardsHeight + depthHeight + disclosureHeight
     if isPetHidden {
       preferredSize = NSSize(
         width: presentation.cards.isEmpty ? 0 : DesignTokens.cardWidth,
-        height: presentation.cards.isEmpty ? 0 : cardsHeight + disclosureHeight
+        height: presentation.cards.isEmpty ? 0 : cardRegionHeight
       )
     } else {
-      preferredSize = NSSize(
-        width: DesignTokens.petSize.width
-          + (presentation.cards.isEmpty ? 0 : DesignTokens.spaceM + DesignTokens.cardWidth),
-        height: max(DesignTokens.petSize.height, cardsHeight)
-      )
+      switch layout {
+      case .vertical:
+        preferredSize = NSSize(
+          width: presentation.cards.isEmpty
+            ? DesignTokens.petSize.width : max(DesignTokens.petSize.width, DesignTokens.cardWidth),
+          height: DesignTokens.petSize.height
+            + (presentation.cards.isEmpty ? 0 : DesignTokens.spaceM + cardRegionHeight)
+        )
+      case .horizontal:
+        preferredSize = NSSize(
+          width: DesignTokens.petSize.width
+            + (presentation.cards.isEmpty ? 0 : DesignTokens.spaceM + DesignTokens.cardWidth),
+          height: max(DesignTokens.petSize.height, cardRegionHeight)
+        )
+      }
     }
     frame.size = preferredSize
     needsLayout = true
@@ -631,20 +705,51 @@ final class OverlayContainerView: NSView {
 
   override func layout() {
     super.layout()
-    petView.frame = NSRect(origin: .zero, size: DesignTokens.petSize)
+    let depthHeight = CGFloat(cardDepthLayerCount) * DesignTokens.cardDepthLayerOffset
+    let disclosureHeight = disclosureButton.isHidden ? 0 : DesignTokens.cardDisclosureHeight
+    let cardContentHeight = cardsHeight + depthHeight
+    if isPetHidden {
+      petView.frame = NSRect(origin: .zero, size: DesignTokens.petSize)
+    } else {
+      switch layoutMode {
+      case .vertical:
+        petView.frame = NSRect(
+          x: (preferredSize.width - DesignTokens.petSize.width) / 2,
+          y: cardContentHeight
+            + disclosureHeight
+            + (scrollView.isHidden ? 0 : DesignTokens.spaceM),
+          width: DesignTokens.petSize.width,
+          height: DesignTokens.petSize.height
+        )
+      case .horizontal:
+        petView.frame = NSRect(origin: .zero, size: DesignTokens.petSize)
+      }
+    }
     guard !scrollView.isHidden else { return }
-    let cardsX = isPetHidden ? 0 : DesignTokens.petSize.width + DesignTokens.spaceM
-    scrollView.frame = NSRect(
+    let cardsX: CGFloat
+    switch layoutMode {
+    case .vertical:
+      cardsX = (preferredSize.width - DesignTokens.cardWidth) / 2
+    case .horizontal:
+      cardsX = isPetHidden ? 0 : DesignTokens.petSize.width + DesignTokens.spaceM
+    }
+    cardDepthHintView.frame = NSRect(
       x: cardsX,
       y: 0,
       width: DesignTokens.cardWidth,
-      height: isPetHidden ? cardsHeight : preferredSize.height
+      height: DesignTokens.cardHeight + depthHeight
+    )
+    scrollView.frame = NSRect(
+      x: cardsX,
+      y: depthHeight,
+      width: DesignTokens.cardWidth,
+      height: cardsHeight
     )
     taskListView.frame.size.width = DesignTokens.cardWidth
     if !disclosureButton.isHidden {
       disclosureButton.frame = NSRect(
         x: cardsX,
-        y: cardsHeight,
+        y: cardContentHeight,
         width: DesignTokens.cardWidth,
         height: DesignTokens.cardDisclosureHeight
       )

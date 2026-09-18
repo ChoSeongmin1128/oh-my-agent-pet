@@ -12,7 +12,12 @@ public final class SettingsModel: ObservableObject {
   public init(petLibrary: PetLibraryViewModel, initialPane: SettingsPane = .general) {
     self.petLibrary = petLibrary
     pane = initialPane
-    overlayState = OverlayMenuState(isVisible: true, cardMode: .one)
+    overlayState = OverlayMenuState(
+      isVisible: true,
+      cardMode: .one,
+      layout: .defaultValue,
+      isCardDepthHintEnabled: OverlayPreferences.defaultCardDepthHintEnabled
+    )
   }
 
   public func setOverlayActionHandler(_ handler: @escaping (OverlayControlAction) -> Void) {

@@ -7,6 +7,10 @@ public enum CardDisplayMode: String, Codable, CaseIterable, Sendable {
   case none
 }
 
+enum CardDepthHintPolicy {
+  static let maximumLayers = 2
+}
+
 public enum TaskVisualStatus: String, Equatable, Sendable {
   case inputNeeded
   case working
@@ -60,6 +64,7 @@ public struct OverlayPresentation: Equatable, Sendable {
   public let cards: [TaskCardPresentation]
   public let petStatus: TaskVisualStatus
   public let additionalInterventionCount: Int
+  public let cardDepthLayerCount: Int
   public let showsPetCompletionDot: Bool
   public let canToggleExpansion: Bool
   public let isTemporarilyExpanded: Bool
@@ -68,6 +73,7 @@ public struct OverlayPresentation: Equatable, Sendable {
     cards: [TaskCardPresentation],
     petStatus: TaskVisualStatus,
     additionalInterventionCount: Int,
+    cardDepthLayerCount: Int = 0,
     showsPetCompletionDot: Bool,
     canToggleExpansion: Bool,
     isTemporarilyExpanded: Bool
@@ -75,6 +81,7 @@ public struct OverlayPresentation: Equatable, Sendable {
     self.cards = cards
     self.petStatus = petStatus
     self.additionalInterventionCount = additionalInterventionCount
+    self.cardDepthLayerCount = cardDepthLayerCount
     self.showsPetCompletionDot = showsPetCompletionDot
     self.canToggleExpansion = canToggleExpansion
     self.isTemporarilyExpanded = isTemporarilyExpanded
@@ -85,6 +92,7 @@ public struct OverlayPresentation: Equatable, Sendable {
       cards: [],
       petStatus: status,
       additionalInterventionCount: 0,
+      cardDepthLayerCount: 0,
       showsPetCompletionDot: false,
       canToggleExpansion: false,
       isTemporarilyExpanded: false
@@ -137,10 +145,15 @@ public struct OverlayPresenter: Sendable {
         $0.waiting.requiresUserIntervention && !visibleIdentities.contains($0.identity)
       } : 0
     let petTask = representative?.task ?? ordered.first
+    let cardDepthLayerCount =
+      effectiveMode == .one && !visibleTasks.isEmpty
+      ? min(max(ordered.count - visibleTasks.count, 0), CardDepthHintPolicy.maximumLayers)
+      : 0
     return OverlayPresentation(
       cards: cards,
       petStatus: petTask.map(TaskVisualStatus.resolve) ?? .ready,
       additionalInterventionCount: additionalInterventions,
+      cardDepthLayerCount: cardDepthLayerCount,
       showsPetCompletionDot: effectiveMode == .none
         && ordered.contains(where: \.hasUnseenCompletion),
       canToggleExpansion: ordered.count > 1 && savedMode != .many,

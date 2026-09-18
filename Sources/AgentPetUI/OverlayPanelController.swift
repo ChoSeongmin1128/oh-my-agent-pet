@@ -5,17 +5,54 @@ import AppKit
 public struct OverlayMenuState: Equatable, Sendable {
   public let isVisible: Bool
   public let cardMode: CardDisplayMode
+  public let layout: OverlayLayout
+  public let isCardDepthHintEnabled: Bool
 
-  public init(isVisible: Bool, cardMode: CardDisplayMode) {
+  public init(
+    isVisible: Bool,
+    cardMode: CardDisplayMode,
+    layout: OverlayLayout = .defaultValue,
+    isCardDepthHintEnabled: Bool = OverlayPreferences.defaultCardDepthHintEnabled
+  ) {
     self.isVisible = isVisible
     self.cardMode = cardMode
+    self.layout = layout
+    self.isCardDepthHintEnabled = isCardDepthHintEnabled
   }
 }
 
 public enum OverlayControlAction: Equatable, Sendable {
   case toggleVisibility
   case setCardMode(CardDisplayMode)
+  case setLayout(OverlayLayout)
+  case setCardDepthHintEnabled(Bool)
   case resetPosition
+}
+
+enum OverlayPositionGeometry {
+  static func anchorOrigin(
+    panelOrigin: NSPoint,
+    petFrame: NSRect,
+    isPetHidden: Bool
+  ) -> NSPoint {
+    guard !isPetHidden else { return panelOrigin }
+    return NSPoint(
+      x: panelOrigin.x + petFrame.minX,
+      y: panelOrigin.y + petFrame.minY
+    )
+  }
+
+  static func panelOrigin(
+    anchorOrigin: NSPoint,
+    petFrame: NSRect,
+    isPetHidden: Bool
+  ) -> NSPoint {
+    guard !isPetHidden else { return anchorOrigin }
+    return NSPoint(
+      x: anchorOrigin.x - petFrame.minX,
+      y: anchorOrigin.y - petFrame.minY
+    )
+  }
 }
 
 @MainActor
@@ -70,8 +107,10 @@ public final class OverlayPanelController {
 
   public func setPetHidden(_ hidden: Bool) {
     guard contentView.isPetHidden != hidden else { return }
+    let panelOrigin = panel.frame.origin
     contentView.setPetHidden(hidden)
-    render()
+    render(preservedPanelOrigin: panelOrigin)
+    preferencesStore.save(preferences)
   }
 
   public func update(tasks: [AgentTaskSnapshot], representative: RepresentativeTask?) {
@@ -90,6 +129,12 @@ public final class OverlayPanelController {
       preferences.cardMode = mode
       isTemporarilyExpanded = false
       render()
+    case .setLayout(let layout):
+      preferences.layout = layout
+      render()
+    case .setCardDepthHintEnabled(let isEnabled):
+      preferences.isCardDepthHintEnabled = isEnabled
+      render()
     case .resetPosition:
       preferences.position = nil
       positionAtDefaultLocation()
@@ -103,7 +148,8 @@ public final class OverlayPanelController {
     panel.orderOut(nil)
   }
 
-  private func render() {
+  private func render(preservedPanelOrigin: NSPoint? = nil) {
+    let anchorOrigin = hasRestoredPosition ? currentAnchorOrigin() : nil
     let presentation = presenter.makePresentation(
       tasks: tasks,
       representative: representative,
@@ -112,17 +158,35 @@ public final class OverlayPanelController {
     )
     contentView.update(
       presentation: presentation,
+      layout: preferences.layout,
+      isCardDepthHintEnabled: preferences.isCardDepthHintEnabled,
       onOpen: { [weak self] task in self?.openTaskHandler?(task) },
       onPetClick: { [weak self] in self?.toggleTemporaryExpansion() },
       onDragEnded: { [weak self] in self?.finishDragging() }
     )
-    let origin = panel.frame.origin
     panel.setContentSize(
       NSSize(
         width: max(contentView.preferredSize.width, 1),
         height: max(contentView.preferredSize.height, 1)))
-    panel.setFrameOrigin(origin)
+    contentView.layoutSubtreeIfNeeded()
+    if let preservedPanelOrigin {
+      panel.setFrameOrigin(preservedPanelOrigin)
+    } else if let anchorOrigin {
+      panel.setFrameOrigin(
+        OverlayPositionGeometry.panelOrigin(
+          anchorOrigin: anchorOrigin,
+          petFrame: contentView.petView.frame,
+          isPetHidden: contentView.isPetHidden
+        ))
+    }
     clampToVisibleScreen()
+    if hasRestoredPosition {
+      let adjustedAnchorOrigin = currentAnchorOrigin()
+      synchronizePositionPreference(anchorOrigin: adjustedAnchorOrigin)
+      if let anchorOrigin, adjustedAnchorOrigin != anchorOrigin {
+        preferencesStore.save(preferences)
+      }
+    }
     applyVisibility()
   }
 
@@ -134,10 +198,7 @@ public final class OverlayPanelController {
 
   private func finishDragging() {
     clampToVisibleScreen()
-    preferences.position = OverlayPosition(
-      x: panel.frame.origin.x,
-      y: panel.frame.origin.y
-    )
+    synchronizePositionPreference(anchorOrigin: currentAnchorOrigin())
     preferencesStore.save(preferences)
   }
 
@@ -156,8 +217,18 @@ public final class OverlayPanelController {
 
   private func restorePosition() {
     if let position = preferences.position {
-      panel.setFrameOrigin(NSPoint(x: position.x, y: position.y))
+      panel.setFrameOrigin(
+        OverlayPositionGeometry.panelOrigin(
+          anchorOrigin: NSPoint(x: position.x, y: position.y),
+          petFrame: contentView.petView.frame,
+          isPetHidden: contentView.isPetHidden
+        ))
       clampToVisibleScreen()
+      let adjustedAnchorOrigin = currentAnchorOrigin()
+      synchronizePositionPreference(anchorOrigin: adjustedAnchorOrigin)
+      if adjustedAnchorOrigin.x != position.x || adjustedAnchorOrigin.y != position.y {
+        preferencesStore.save(preferences)
+      }
     } else {
       positionAtDefaultLocation()
     }
@@ -171,7 +242,19 @@ public final class OverlayPanelController {
         y: visibleFrame.minY + DesignTokens.screenMargin
       )
     )
-    preferences.position = OverlayPosition(x: panel.frame.minX, y: panel.frame.minY)
+    synchronizePositionPreference(anchorOrigin: currentAnchorOrigin())
+  }
+
+  private func currentAnchorOrigin() -> NSPoint {
+    OverlayPositionGeometry.anchorOrigin(
+      panelOrigin: panel.frame.origin,
+      petFrame: contentView.petView.frame,
+      isPetHidden: contentView.isPetHidden
+    )
+  }
+
+  private func synchronizePositionPreference(anchorOrigin: NSPoint) {
+    preferences.position = OverlayPosition(x: anchorOrigin.x, y: anchorOrigin.y)
   }
 
   private func clampToVisibleScreen() {
@@ -196,7 +279,12 @@ public final class OverlayPanelController {
 
   private func publishState() {
     stateHandler?(
-      OverlayMenuState(isVisible: preferences.isVisible, cardMode: preferences.cardMode)
+      OverlayMenuState(
+        isVisible: preferences.isVisible,
+        cardMode: preferences.cardMode,
+        layout: preferences.layout,
+        isCardDepthHintEnabled: preferences.isCardDepthHintEnabled
+      )
     )
   }
 }
