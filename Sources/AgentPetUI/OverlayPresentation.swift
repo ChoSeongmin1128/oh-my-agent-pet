@@ -109,7 +109,8 @@ public struct OverlayPresenter: Sendable {
     tasks: [AgentTaskSnapshot],
     representative: RepresentativeTask?,
     savedMode: CardDisplayMode,
-    isTemporarilyExpanded: Bool
+    isTemporarilyExpanded: Bool,
+    connectedProviderCount: Int? = nil
   ) -> OverlayPresentation {
     let ordered = order.sorted(tasks)
     let effectiveMode: CardDisplayMode = isTemporarilyExpanded ? .many : savedMode
@@ -123,7 +124,8 @@ public struct OverlayPresenter: Sendable {
       visibleTasks = []
     }
 
-    let providerCount = Set(ordered.map(\.identity.provider)).count
+    let providerCount =
+      connectedProviderCount ?? Set(ordered.map(\.identity.provider)).count
     let duplicateKeys = Dictionary(grouping: ordered) {
       "\($0.identity.provider.rawValue)\u{1F}\($0.title)"
     }
@@ -133,7 +135,7 @@ public struct OverlayPresenter: Sendable {
       return TaskCardPresentation(
         task: task,
         status: TaskVisualStatus.resolve(task),
-        providerLabel: providerCount > 1 ? providerLabel(task.identity.provider) : nil,
+        providerLabel: providerCount > 1 ? task.identity.provider.displayName : nil,
         shortTaskID: hasDuplicate ? String(task.identity.taskID.prefix(6)) : nil
       )
     }
@@ -161,11 +163,4 @@ public struct OverlayPresenter: Sendable {
     )
   }
 
-  private func providerLabel(_ provider: ProviderIdentifier) -> String {
-    switch provider.rawValue {
-    case "claude": "Claude"
-    case "codex": "Codex"
-    default: provider.rawValue
-    }
-  }
 }

@@ -13,18 +13,11 @@ public enum StatusMenuPresentation {
     let prefix = TaskVisualStatus.resolve(representative.task).label
     var parts = [prefix, representative.task.title]
     if connectedProviderCount > 1 {
-      parts.append(providerLabel(representative.task.identity.provider))
+      parts.append(representative.task.identity.provider.displayName)
     }
     return parts.joined(separator: " · ")
   }
 
-  private static func providerLabel(_ provider: ProviderIdentifier) -> String {
-    switch provider.rawValue {
-    case "claude": "Claude"
-    case "codex": "Codex"
-    default: provider.rawValue
-    }
-  }
 }
 
 @MainActor
@@ -113,13 +106,13 @@ public final class StatusMenuController: NSObject {
       return
     }
     button.image = NSImage(
-      systemSymbolName: "pawprint.fill", accessibilityDescription: "Oh My Agent Pet")
-    button.toolTip = "Oh My Agent Pet"
+      systemSymbolName: "pawprint.fill", accessibilityDescription: AgentPetProduct.name)
+    button.toolTip = AgentPetProduct.name
   }
 
   private func configureMenu() {
     let menu = NSMenu()
-    let title = NSMenuItem(title: "Oh My Agent Pet", action: nil, keyEquivalent: "")
+    let title = NSMenuItem(title: AgentPetProduct.name, action: nil, keyEquivalent: "")
     title.isEnabled = false
     statusRow.target = self
     navigationFeedbackRow.isEnabled = false

@@ -63,7 +63,7 @@ struct PetSelectionStore: Sendable {
     case PetSelection.noneIdentifier:
       return PetSelectionLoad(selection: .none)
     case "installed":
-      guard let recordID = stored.recordID, PetRecordIdentifier.isValid(recordID) else {
+      guard let recordID = stored.recordID, PetRecordIDPolicy.isValid(recordID) else {
         return PetSelectionLoad(selection: .original, issue: .corruptFile)
       }
       return PetSelectionLoad(selection: .installed(recordID: recordID))
@@ -95,19 +95,5 @@ struct PetSelectionStore: Sendable {
     let schemaVersion: Int
     let kind: String
     let recordID: String?
-  }
-}
-
-enum PetRecordIdentifier {
-  static func isValid(_ value: String) -> Bool {
-    // Record IDs become directory names, so they follow the manifest identifier rules exactly.
-    guard value.count <= 64 + 1 + PetLibraryPolicy.recordIdentifierSuffixLength * 2 else {
-      return false
-    }
-    return !value.hasPrefix(".")
-      && value.unicodeScalars.allSatisfy {
-        CharacterSet.alphanumerics.contains($0)
-          || CharacterSet(charactersIn: "-_.").contains($0)
-      }
   }
 }

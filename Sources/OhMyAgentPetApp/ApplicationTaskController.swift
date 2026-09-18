@@ -1,5 +1,3 @@
-import AgentPetClaude
-import AgentPetCodex
 import AgentPetCore
 import AgentPetEvents
 import AgentPetNavigation
@@ -12,38 +10,59 @@ final class ApplicationTaskController {
   private let statusMenuController: StatusMenuController
   private let overlayController: OverlayPanelController
   private let coordinator: ProviderCoordinator
-  private let codexProvider: CodexTaskProvider
-  private let codexPaths: CodexPaths
+  private let connectionCoordinator: ProviderConnectionCoordinator
+  private let providerAdapters: [any TaskProviderAdapter]
+  private let connectionInspectors: [any ProviderConnectionInspecting]
   private let navigator: TaskNavigator
-  private let claudeDesktopSessionsDirectory: URL
+  private let runtimeHealth: ApplicationRuntimeHealth
   private var eventWatcher: AgentEventLogWatcher?
-  private var codexWatcher: CodexFileSetWatcher?
+  private var providerFileWatcher: AgentFileSetWatcher?
+  private var connectionFileWatcher: AgentFileSetWatcher?
   private var refreshInProgress = false
   private var refreshPending = false
+  private var connectionRefreshPending = true
+  private var activeTaskProviders = Set<ProviderIdentifier>()
 
   init(
     statusMenuController: StatusMenuController,
     overlayController: OverlayPanelController,
     homeDirectory: URL,
-    environment: [String: String]
+    environment: [String: String],
+    cliExecutableURL: URL,
+    runtimeHealth: ApplicationRuntimeHealth
   ) throws {
     self.statusMenuController = statusMenuController
     self.overlayController = overlayController
-    let claudePaths = ClaudePaths(homeDirectory: homeDirectory, environment: environment)
-    claudeDesktopSessionsDirectory = claudePaths.desktopSessionsDirectory
+    self.runtimeHealth = runtimeHealth
     navigator = TaskNavigator()
-    let claudeProvider = ClaudeTaskProvider(paths: claudePaths)
-    codexPaths = CodexPaths(homeDirectory: homeDirectory, environment: environment)
-    codexProvider = CodexTaskProvider(paths: codexPaths)
-    coordinator = try ProviderCoordinator(adapters: [claudeProvider, codexProvider])
-    eventWatcher = AgentEventLogWatcher(eventsURL: claudePaths.eventsURL) { [weak self] in
+    let runtimes = ApplicationProviderCatalog.runtimes(
+      homeDirectory: homeDirectory,
+      environment: environment,
+      cliExecutableURL: cliExecutableURL
+    )
+    providerAdapters = runtimes.map(\.adapter)
+    connectionInspectors = runtimes.map(\.connectionInspector)
+    coordinator = try ProviderCoordinator(adapters: providerAdapters)
+    connectionCoordinator = try ProviderConnectionCoordinator(
+      inspectors: connectionInspectors
+    )
+    eventWatcher = AgentEventLogWatcher(
+      eventsURL: ApplicationPaths(homeDirectory: homeDirectory).eventsURL
+    ) { [weak self] in
       Task { @MainActor [weak self] in
         self?.requestRefresh()
       }
     }
-    codexWatcher = CodexFileSetWatcher { [weak self] in
+    providerFileWatcher = AgentFileSetWatcher { [weak self] in
       Task { @MainActor [weak self] in
         self?.requestRefresh()
+      }
+    }
+    connectionFileWatcher = AgentFileSetWatcher { [weak self] in
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        self.connectionRefreshPending = true
+        self.requestRefresh()
       }
     }
     statusMenuController.setOpenTaskHandler { [weak self] task in
@@ -59,21 +78,15 @@ final class ApplicationTaskController {
 
   func start() throws {
     try eventWatcher?.start()
-    codexWatcher?.start(
-      urls: [
-        codexPaths.dataRoot,
-        codexPaths.sessionsDirectory,
-        codexPaths.sessionIndexURL,
-        claudeDesktopSessionsDirectory.deletingLastPathComponent(),
-        claudeDesktopSessionsDirectory,
-      ]
-    )
+    providerFileWatcher?.start(urls: [])
+    connectionFileWatcher?.start(urls: connectionWatchedURLs())
     requestRefresh()
   }
 
   func stop() {
     eventWatcher?.stop()
-    codexWatcher?.stop()
+    providerFileWatcher?.stop()
+    connectionFileWatcher?.stop()
     overlayController.stop()
   }
 
@@ -87,22 +100,51 @@ final class ApplicationTaskController {
       while self.refreshPending {
         self.refreshPending = false
         let report = await self.coordinator.refresh()
-        var watchedURLs = await self.codexProvider.watchedURLs()
-        watchedURLs.append(self.claudeDesktopSessionsDirectory.deletingLastPathComponent())
-        watchedURLs.append(self.claudeDesktopSessionsDirectory)
-        self.codexWatcher?.update(urls: watchedURLs)
-        let connectedProviderCount = Set(report.tasks.map(\.identity.provider)).count
-        self.statusMenuController.update(
-          representative: report.representative,
-          connectedProviderCount: connectedProviderCount
-        )
-        self.overlayController.update(
-          tasks: report.tasks,
-          representative: report.representative
-        )
+        self.runtimeHealth.updateProviderFailures(report.failures)
+        let currentTaskProviders = Set(report.tasks.map(\.identity.provider))
+        let newlyActiveProviders = currentTaskProviders.subtracting(self.activeTaskProviders)
+        self.activeTaskProviders = currentTaskProviders
+        let shouldRefreshConnections =
+          self.connectionRefreshPending
+          || newlyActiveProviders.contains(where: {
+            self.runtimeHealth.providerConnections[$0]?.state != .connected
+          })
+        var watchedURLs = Set<URL>()
+        for adapter in self.providerAdapters {
+          for url in await adapter.watchedURLs() {
+            watchedURLs.insert(url)
+          }
+        }
+        self.providerFileWatcher?.update(urls: watchedURLs.sorted { $0.path < $1.path })
+        self.publish(report)
+        if shouldRefreshConnections {
+          self.connectionRefreshPending = false
+          let statuses = await self.connectionCoordinator.refresh()
+          self.runtimeHealth.updateConnections(statuses)
+          self.connectionFileWatcher?.update(urls: self.connectionWatchedURLs())
+          self.publish(report)
+        }
       }
       self.refreshInProgress = false
     }
+  }
+
+  private func publish(_ report: ProviderRefreshReport) {
+    let connectedProviderCount = runtimeHealth.connectedProviderCount
+    statusMenuController.update(
+      representative: report.representative,
+      connectedProviderCount: connectedProviderCount
+    )
+    overlayController.update(
+      tasks: report.tasks,
+      representative: report.representative,
+      connectedProviderCount: connectedProviderCount
+    )
+  }
+
+  private func connectionWatchedURLs() -> [URL] {
+    Array(Set(connectionInspectors.flatMap { $0.watchedURLs() }))
+      .sorted { $0.path < $1.path }
   }
 
   private func open(_ task: AgentTaskSnapshot) {

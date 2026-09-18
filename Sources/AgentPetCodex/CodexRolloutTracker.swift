@@ -23,7 +23,7 @@ struct CodexRolloutTracker {
   private static let taskCompleteNeedle = Array("\"task_complete\"".utf8)
   private static let turnAbortedNeedle = Array("\"turn_aborted\"".utf8)
 
-  private let provider = ProviderIdentifier("codex")!
+  private let provider = ProviderIdentifier.codex
   private let dataRoot: String
   private let dateParser = CodexDateParser()
   private(set) var candidate: CodexRolloutCandidate

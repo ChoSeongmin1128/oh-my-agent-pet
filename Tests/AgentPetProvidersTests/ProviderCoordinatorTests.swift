@@ -142,6 +142,47 @@ final class ProviderCoordinatorTests: XCTestCase {
   }
 }
 
+final class ProviderConnectionCoordinatorTests: XCTestCase {
+  func testRefreshPreservesInspectorStatesInProviderOrder() async throws {
+    let coordinator = try ProviderConnectionCoordinator(
+      inspectors: [
+        FakeConnectionInspector(
+          identifier: .codex,
+          status: ProviderConnectionStatus(provider: .codex, state: .needsAttention)
+        ),
+        FakeConnectionInspector(
+          identifier: .claude,
+          status: ProviderConnectionStatus(provider: .claude, state: .connected)
+        ),
+      ]
+    )
+
+    let statuses = await coordinator.refresh()
+
+    XCTAssertEqual(statuses.map(\.provider), [.claude, .codex])
+    XCTAssertEqual(statuses.map(\.state), [.connected, .needsAttention])
+  }
+
+  func testDuplicateConnectionInspectorsAreRejected() {
+    XCTAssertThrowsError(
+      try ProviderConnectionCoordinator(
+        inspectors: [
+          FakeConnectionInspector(
+            identifier: .claude,
+            status: ProviderConnectionStatus(provider: .claude, state: .connected)
+          ),
+          FakeConnectionInspector(
+            identifier: .claude,
+            status: ProviderConnectionStatus(provider: .claude, state: .notConfigured)
+          ),
+        ]
+      )
+    ) {
+      XCTAssertEqual($0 as? ProviderCoordinatorError, .duplicateProvider(.claude))
+    }
+  }
+}
+
 private struct StubAdapter: TaskProviderAdapter {
   enum Behavior: Sendable {
     case tasks([AgentTaskSnapshot])
@@ -158,6 +199,15 @@ private struct StubAdapter: TaskProviderAdapter {
     case .failure:
       throw StubError.failed
     }
+  }
+}
+
+private struct FakeConnectionInspector: ProviderConnectionInspecting {
+  let identifier: ProviderIdentifier
+  let status: ProviderConnectionStatus
+
+  func connectionStatus() async -> ProviderConnectionStatus {
+    status
   }
 }
 

@@ -1,3 +1,4 @@
+import AgentPetCore
 import Foundation
 
 public enum CodexHookConfigurationError: Error, Equatable, Sendable {
@@ -16,7 +17,7 @@ public enum CodexHookInstallationState: String, Codable, Equatable, Sendable {
 }
 
 public struct CodexHookConfiguration: Sendable {
-  public static let ownershipMarker = "Oh My Agent Pet session observer"
+  public static let ownershipMarker = AgentPetProduct.hookOwnershipMarker
   public static let eventNames = [
     "SessionStart",
     "UserPromptSubmit",

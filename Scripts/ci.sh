@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT_DIR/Config/product.env"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/omapet-ci.XXXXXX")"
 
 cleanup() {
@@ -21,8 +22,9 @@ BIN_DIR="$(swift build --show-bin-path)"
 "$BIN_DIR/omapet" version --json | python3 -c '
 import json, sys
 value = json.load(sys.stdin)
-assert value == {"name": "Oh My Agent Pet", "version": "0.0.0-dev"}
-'
+expected_version, expected_name = sys.argv[1:3]
+assert value == {"name": expected_name, "version": expected_version}
+' "$PRODUCT_DEV_VERSION" "$PRODUCT_NAME"
 
 CLI_HOME="$TEMP_ROOT/home"
 CLAUDE_ROOT="$TEMP_ROOT/Claude Config"
@@ -66,13 +68,13 @@ printf '%s' "$PET_ERROR_OUTPUT" \
     | python3 -c 'import json, sys; assert json.load(sys.stdin)["code"] == "source_unavailable"'
 
 OUTPUT_ROOT="$TEMP_ROOT" "$ROOT_DIR/Scripts/build-app.sh" debug >/dev/null
-APP_DIR="$TEMP_ROOT/Oh My Agent Pet.app"
+APP_DIR="$TEMP_ROOT/$PRODUCT_NAME.app"
 
 test -x "$APP_DIR/Contents/MacOS/OhMyAgentPet"
 test -x "$APP_DIR/Contents/MacOS/omapet"
 test -f "$APP_DIR/Contents/Resources/LICENSE"
 test -f "$APP_DIR/Contents/Resources/THIRD_PARTY_NOTICES.md"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_DIR/Contents/Info.plist")" = "com.seongmin.OhMyAgentPet"
-test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_DIR/Contents/Info.plist")" = "14.0"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_DIR/Contents/Info.plist")" = "$PRODUCT_BUNDLE_ID"
+test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP_DIR/Contents/Info.plist")" = "$PRODUCT_MIN_MACOS"
 test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSAppleEventsUsageDescription' "$APP_DIR/Contents/Info.plist")"
 test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' "$ROOT_DIR/Config/OhMyAgentPet.entitlements")" = "true"

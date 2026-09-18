@@ -1,3 +1,4 @@
+import AgentPetCore
 import Foundation
 
 public struct CodexPaths: Sendable {
@@ -11,9 +12,9 @@ public struct CodexPaths: Sendable {
     dataRoot = Self.dataRoot(homeDirectory: homeDirectory, environment: environment)
     sessionsDirectory = dataRoot.appendingPathComponent("sessions", isDirectory: true)
     sessionIndexURL = dataRoot.appendingPathComponent("session_index.jsonl")
-    applicationSupportDirectory = homeDirectory.appendingPathComponent(
-      "Library/Application Support/Oh My Agent Pet", isDirectory: true)
-    eventsURL = applicationSupportDirectory.appendingPathComponent("events.ndjson")
+    let applicationPaths = ApplicationPaths(homeDirectory: homeDirectory)
+    applicationSupportDirectory = applicationPaths.applicationSupportDirectory
+    eventsURL = applicationPaths.eventsURL
   }
 
   private static func dataRoot(

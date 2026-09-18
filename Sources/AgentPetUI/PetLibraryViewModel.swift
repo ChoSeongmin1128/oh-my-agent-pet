@@ -1,3 +1,4 @@
+import AgentPetCore
 import AgentPetLibrary
 import AgentPetSprites
 import AppKit
@@ -140,7 +141,7 @@ public final class PetLibraryViewModel: ObservableObject {
         id: PetSelection.originalIdentifier,
         selection: .original,
         title: "Original vector pet",
-        subtitle: "Included with Oh My Agent Pet",
+        subtitle: "Included with \(AgentPetProduct.name)",
         licenseStatus: nil,
         record: nil,
         issue: nil

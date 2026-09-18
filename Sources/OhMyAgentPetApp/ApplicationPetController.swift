@@ -10,6 +10,7 @@ final class ApplicationPetController {
   private let service: PetLibraryService
   private let overlayController: OverlayPanelController
   private let settingsModel: SettingsModel
+  private let runtimeHealth: ApplicationRuntimeHealth
   private var watcher: AgentFileSetWatcher?
   private var refreshInProgress = false
   private var refreshPending = false
@@ -17,15 +18,21 @@ final class ApplicationPetController {
   init(
     service: PetLibraryService,
     overlayController: OverlayPanelController,
-    settingsModel: SettingsModel
+    settingsModel: SettingsModel,
+    runtimeHealth: ApplicationRuntimeHealth
   ) {
     self.service = service
     self.overlayController = overlayController
     self.settingsModel = settingsModel
+    self.runtimeHealth = runtimeHealth
   }
 
   func start() {
-    try? service.prepare()
+    do {
+      try service.prepare()
+    } catch {
+      runtimeHealth.recordPetLibraryPrepareFailure()
+    }
     watcher = AgentFileSetWatcher { [weak self] in
       Task { @MainActor [weak self] in
         self?.requestRefresh()

@@ -5,12 +5,13 @@ import Foundation
 public actor ClaudeTaskProvider: TaskProviderAdapter {
   private static let maximumRetainedIssues = 128
 
-  public nonisolated let identifier = ProviderIdentifier("claude")!
+  public nonisolated let identifier = ProviderIdentifier.claude
 
   private var reader: ClaudeEventLogReader
   private var reducer: ClaudeEventReducer
   private var issues: [ClaudeEventLogIssue] = []
   private var desktopSessionIndex: ClaudeDesktopSessionIndex
+  private let desktopSessionsDirectory: URL
 
   public init(paths: ClaudePaths, profileID: String = "default") {
     reader = ClaudeEventLogReader(eventsURL: paths.eventsURL)
@@ -18,6 +19,7 @@ public actor ClaudeTaskProvider: TaskProviderAdapter {
     desktopSessionIndex = ClaudeDesktopSessionIndex(
       sessionsDirectory: paths.desktopSessionsDirectory
     )
+    desktopSessionsDirectory = paths.desktopSessionsDirectory
   }
 
   public func loadTasks() async throws -> [AgentTaskSnapshot] {
@@ -61,5 +63,12 @@ public actor ClaudeTaskProvider: TaskProviderAdapter {
 
   public func currentIssues() -> [ClaudeEventLogIssue] {
     issues
+  }
+
+  public func watchedURLs() async -> [URL] {
+    [
+      desktopSessionsDirectory.deletingLastPathComponent(),
+      desktopSessionsDirectory,
+    ]
   }
 }

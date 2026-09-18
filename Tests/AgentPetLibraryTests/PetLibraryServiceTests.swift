@@ -233,6 +233,28 @@ final class PetLibraryServiceTests: XCTestCase {
       try fixture.service.select(.installed(recordID: "missing")), .recordNotFound)
   }
 
+  func testSelectedRemovalRollsBackLibraryWhenSelectionResetFails() throws {
+    let source = try PetPackageFixture.writePackage(
+      into: fixture.sourceDirectory("rollback-remove"),
+      id: "rollback-remove"
+    )
+    let record = try fixture.service.install(try fixture.service.stage(.folder(source))).record
+    _ = try fixture.service.select(.installed(recordID: record.recordID))
+    fixture.fileSystem.fail(.writeData)
+
+    assertLibraryError(
+      try fixture.service.remove(recordID: record.recordID),
+      .writeFailed
+    )
+
+    XCTAssertNotNil(try fixture.service.record(for: record.recordID))
+    XCTAssertEqual(
+      fixture.service.loadSelection().selection,
+      .installed(recordID: record.recordID)
+    )
+    XCTAssertEqual(fixture.service.entries().map(\.recordID), [record.recordID])
+  }
+
   func testDamagedOrMissingSelectedPackageFallsBackWithIssue() throws {
     let source = try PetPackageFixture.writePackage(
       into: fixture.sourceDirectory("frag"), id: "frag")

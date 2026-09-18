@@ -13,7 +13,7 @@ public struct ClaudeEventReducer: Sendable {
   private var appliedRecordOrder: [UUID] = []
 
   public init(profileID: String = "default", dataRoot: String) {
-    provider = ProviderIdentifier("claude")!
+    provider = .claude
     self.profileID = profileID
     self.dataRoot = dataRoot
   }

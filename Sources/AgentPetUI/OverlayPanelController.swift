@@ -64,6 +64,7 @@ public final class OverlayPanelController {
   private var preferences: OverlayPreferences
   private var tasks: [AgentTaskSnapshot] = []
   private var representative: RepresentativeTask?
+  private var connectedProviderCount = 0
   private var isTemporarilyExpanded = false
   private var hasRestoredPosition = false
   private var openTaskHandler: ((AgentTaskSnapshot) -> Void)?
@@ -113,9 +114,14 @@ public final class OverlayPanelController {
     preferencesStore.save(preferences)
   }
 
-  public func update(tasks: [AgentTaskSnapshot], representative: RepresentativeTask?) {
+  public func update(
+    tasks: [AgentTaskSnapshot],
+    representative: RepresentativeTask?,
+    connectedProviderCount: Int = 0
+  ) {
     self.tasks = tasks
     self.representative = representative
+    self.connectedProviderCount = connectedProviderCount
     if tasks.count <= 1 { isTemporarilyExpanded = false }
     render()
   }
@@ -154,7 +160,8 @@ public final class OverlayPanelController {
       tasks: tasks,
       representative: representative,
       savedMode: preferences.cardMode,
-      isTemporarilyExpanded: isTemporarilyExpanded
+      isTemporarilyExpanded: isTemporarilyExpanded,
+      connectedProviderCount: connectedProviderCount
     )
     contentView.update(
       presentation: presentation,

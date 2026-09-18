@@ -133,10 +133,15 @@ struct ZipArchiveReader: Sendable {
     var output = [UInt8](repeating: 0, count: expectedSize + 1)
     let written = output.withUnsafeMutableBufferPointer { destination in
       compressed.withUnsafeBufferPointer { source in
-        compression_decode_buffer(
-          destination.baseAddress!,
+        guard let destinationAddress = destination.baseAddress,
+          let sourceAddress = source.baseAddress
+        else {
+          return 0
+        }
+        return compression_decode_buffer(
+          destinationAddress,
           destination.count,
-          source.baseAddress!,
+          sourceAddress,
           source.count,
           nil,
           COMPRESSION_ZLIB

@@ -1,3 +1,4 @@
+import AgentPetCore
 import Foundation
 
 public enum ClaudeHookConfigurationError: Error, Equatable, Sendable {
@@ -15,7 +16,7 @@ public enum ClaudeHookInstallationState: String, Codable, Equatable, Sendable {
 }
 
 public struct ClaudeHookConfiguration: Sendable {
-  public static let ownershipMarker = "Oh My Agent Pet session observer"
+  public static let ownershipMarker = AgentPetProduct.hookOwnershipMarker
   public static let shellMarker = "oh-my-agent-pet-hook-v1"
   public static let eventNames = [
     "SessionStart",

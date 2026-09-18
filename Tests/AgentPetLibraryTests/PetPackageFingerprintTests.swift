@@ -58,22 +58,40 @@ final class PetPackageFingerprintTests: XCTestCase {
   func testRecordIDProposalReservesSelectionWordsAndAvoidsCollisions() {
     let fingerprint = String(repeating: "ab", count: 32)
     XCTAssertEqual(
-      PetLibraryService.proposeRecordID(manifestID: "cat", fingerprint: fingerprint, takenIDs: []),
+      PetRecordIDPolicy.propose(manifestID: "cat", fingerprint: fingerprint, takenIDs: []),
       "cat")
     XCTAssertEqual(
-      PetLibraryService.proposeRecordID(
+      PetRecordIDPolicy.propose(
         manifestID: "cat", fingerprint: fingerprint, takenIDs: ["cat"]),
       "cat-abababab")
     XCTAssertEqual(
-      PetLibraryService.proposeRecordID(
+      PetRecordIDPolicy.propose(
         manifestID: "cat", fingerprint: fingerprint, takenIDs: ["cat", "cat-abababab"]),
       "cat-abababababababab")
     XCTAssertEqual(
-      PetLibraryService.proposeRecordID(manifestID: "none", fingerprint: fingerprint, takenIDs: []),
+      PetRecordIDPolicy.propose(manifestID: "none", fingerprint: fingerprint, takenIDs: []),
       "none-abababab")
     XCTAssertEqual(
-      PetLibraryService.proposeRecordID(
+      PetRecordIDPolicy.propose(
         manifestID: "original", fingerprint: fingerprint, takenIDs: []),
       "original-abababab")
+  }
+
+  func testRecordIDPolicyAcceptsExtendedFingerprintSuffixesItProposes() {
+    let fingerprint = String(repeating: "a", count: PetRecordIDPolicy.fingerprintLength)
+    let taken = Set([
+      "cat",
+      "cat-" + String(repeating: "a", count: 8),
+      "cat-" + String(repeating: "a", count: 16),
+    ])
+
+    let proposed = PetRecordIDPolicy.propose(
+      manifestID: "cat",
+      fingerprint: fingerprint,
+      takenIDs: taken
+    )
+
+    XCTAssertEqual(proposed, "cat-" + String(repeating: "a", count: 24))
+    XCTAssertTrue(PetRecordIDPolicy.isValid(proposed))
   }
 }

@@ -1,27 +1,9 @@
 import AgentPetClaude
 import AgentPetCodex
+import AgentPetCore
 import AgentPetEvents
 import AgentPetLibrary
 import Foundation
-
-public enum OmapetCommand: Equatable, Sendable {
-  case help
-  case version(json: Bool)
-  case doctor(json: Bool)
-  case setupStatus(json: Bool)
-  case setupStatusCodex(json: Bool)
-  case setupConnectClaude(json: Bool, dryRun: Bool)
-  case setupDisconnectClaude(json: Bool, dryRun: Bool)
-  case setupConnectCodex(json: Bool, dryRun: Bool)
-  case setupDisconnectCodex(json: Bool, dryRun: Bool)
-  case hookClaude
-  case hookCodex
-  case petList(json: Bool)
-  case petInspect(source: String, json: Bool)
-  case petInstall(source: String, json: Bool, dryRun: Bool)
-  case petSelect(identifier: String, json: Bool)
-  case petRemove(recordID: String, json: Bool)
-}
 
 public struct OmapetCommandResult: Equatable, Sendable {
   public let exitCode: Int32
@@ -36,7 +18,7 @@ public struct OmapetCommandResult: Equatable, Sendable {
 }
 
 public struct OmapetCommandRunner: Sendable {
-  public static let version = "0.0.0-dev"
+  public static let version = AgentPetProduct.developmentVersion
   public static let maximumHookInputBytes = AgentHookRecorder.maximumInputBytes
 
   private let claudeSetupService: ClaudeSetupService
@@ -93,76 +75,13 @@ public struct OmapetCommandRunner: Sendable {
 
   public func run(arguments: [String], standardInput: Data = Data()) -> OmapetCommandResult {
     do {
-      return execute(try parse(arguments: arguments), standardInput: standardInput)
+      return execute(
+        try OmapetCommandParser.parse(arguments: arguments), standardInput: standardInput)
     } catch {
       return OmapetCommandResult(
         exitCode: 64,
         standardError: "\(error)\n\n\(Self.helpText)"
       )
-    }
-  }
-
-  private func parse(arguments: [String]) throws -> OmapetCommand {
-    if arguments == ["--help"] || arguments == ["-h"] {
-      return .help
-    }
-    if arguments == ["--version"] {
-      return .version(json: false)
-    }
-
-    let supportedOptions: Set<String> = ["--json", "--dry-run"]
-    let unknownOptions = arguments.filter { $0.hasPrefix("-") && !supportedOptions.contains($0) }
-    guard unknownOptions.isEmpty else {
-      throw OmapetCLIError.unsupportedArguments(arguments)
-    }
-
-    let json = arguments.contains("--json")
-    let dryRun = arguments.contains("--dry-run")
-    let positional = arguments.filter { !supportedOptions.contains($0) }
-
-    switch positional {
-    case [] where !dryRun, ["help"] where !dryRun:
-      return .help
-    case ["version"] where !dryRun:
-      return .version(json: json)
-    case ["doctor"] where !dryRun:
-      return .doctor(json: json)
-    case ["setup", "status"] where !dryRun:
-      return .setupStatus(json: json)
-    case ["setup", "status", "claude"] where !dryRun:
-      return .setupStatus(json: json)
-    case ["setup", "status", "codex"] where !dryRun:
-      return .setupStatusCodex(json: json)
-    case ["setup", "connect", "claude"]:
-      return .setupConnectClaude(json: json, dryRun: dryRun)
-    case ["setup", "disconnect", "claude"]:
-      return .setupDisconnectClaude(json: json, dryRun: dryRun)
-    case ["setup", "connect", "codex"]:
-      return .setupConnectCodex(json: json, dryRun: dryRun)
-    case ["setup", "disconnect", "codex"]:
-      return .setupDisconnectCodex(json: json, dryRun: dryRun)
-    case ["hook", "claude"] where !json && !dryRun:
-      return .hookClaude
-    case ["hook", "codex"] where !json && !dryRun:
-      return .hookCodex
-    case ["pet", "list"] where !dryRun:
-      return .petList(json: json)
-    default:
-      if positional.count == 3, positional[0] == "pet" {
-        switch positional[1] {
-        case "inspect" where !dryRun:
-          return .petInspect(source: positional[2], json: json)
-        case "install":
-          return .petInstall(source: positional[2], json: json, dryRun: dryRun)
-        case "select" where !dryRun:
-          return .petSelect(identifier: positional[2], json: json)
-        case "remove" where !dryRun:
-          return .petRemove(recordID: positional[2], json: json)
-        default:
-          break
-        }
-      }
-      throw OmapetCLIError.unsupportedArguments(positional)
     }
   }
 
@@ -172,24 +91,30 @@ public struct OmapetCommandRunner: Sendable {
       return OmapetCommandResult(exitCode: 0, standardOutput: Self.helpText)
     case .version(let json):
       if json {
-        return jsonResult(VersionOutput(name: "Oh My Agent Pet", version: Self.version))
+        return jsonResult(VersionOutput(name: AgentPetProduct.name, version: Self.version))
       }
       return OmapetCommandResult(
         exitCode: 0,
-        standardOutput: "Oh My Agent Pet \(Self.version)\n"
+        standardOutput: "\(AgentPetProduct.name) \(Self.version)\n"
       )
     case .doctor(let json):
-      let output = DoctorOutput(
-        status: "pass",
-        version: Self.version,
-        checks: [DoctorCheck(id: "runtime", status: "pass")]
-      )
+      let output = OmapetDoctor(
+        claudeSetupService: claudeSetupService,
+        codexSetupService: codexSetupService,
+        petService: petCommands.service,
+        eventsURL: claudeHookRecorder.eventsURL
+      ).inspect(version: Self.version)
       if json {
-        return jsonResult(output)
+        return jsonResult(output, exitCode: output.status == "fail" ? 74 : 0)
+      }
+      let lines = output.checks.map {
+        "\($0.id): \($0.status)" + ($0.detail.map { " (\($0))" } ?? "")
       }
       return OmapetCommandResult(
-        exitCode: 0,
-        standardOutput: "Runtime: pass\nVersion: \(Self.version)\n"
+        exitCode: output.status == "fail" ? 74 : 0,
+        standardOutput:
+          "Status: \(output.status)\nVersion: \(Self.version)\n"
+          + lines.joined(separator: "\n") + "\n"
       )
     case .setupStatus(let json):
       do {
@@ -322,31 +247,9 @@ public struct OmapetCommandRunner: Sendable {
     """
 }
 
-private enum OmapetCLIError: Error, CustomStringConvertible {
-  case unsupportedArguments([String])
-
-  var description: String {
-    switch self {
-    case .unsupportedArguments(let arguments):
-      return "Unsupported arguments: \(arguments.joined(separator: " "))"
-    }
-  }
-}
-
 private struct VersionOutput: Encodable {
   let name: String
   let version: String
-}
-
-private struct DoctorOutput: Encodable {
-  let status: String
-  let version: String
-  let checks: [DoctorCheck]
-}
-
-private struct DoctorCheck: Encodable {
-  let id: String
-  let status: String
 }
 
 private struct SetupErrorOutput: Encodable {

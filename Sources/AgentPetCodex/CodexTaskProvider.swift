@@ -14,7 +14,7 @@ public actor CodexTaskProvider: TaskProviderAdapter {
   public static let defaultMaximumSessions = 32
   private static let maximumRetainedIssues = 128
 
-  public nonisolated let identifier = ProviderIdentifier("codex")!
+  public nonisolated let identifier = ProviderIdentifier.codex
 
   private let paths: CodexPaths
   private let maximumSessions: Int
@@ -86,7 +86,7 @@ public actor CodexTaskProvider: TaskProviderAdapter {
     return snapshots.sorted { $0.identity.stableKey < $1.identity.stableKey }
   }
 
-  public func watchedURLs() -> [URL] {
+  public func watchedURLs() async -> [URL] {
     var urls = Set(watchDirectories)
     urls.insert(paths.dataRoot)
     urls.insert(paths.sessionsDirectory)

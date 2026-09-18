@@ -1,4 +1,5 @@
 import AgentPetClaude
+import AgentPetCore
 import AgentPetLibrary
 import AgentPetUI
 import AppKit
@@ -23,8 +24,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
       environment["HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
       ?? FileManager.default.homeDirectoryForCurrentUser
     let applicationSupportDirectory =
-      ClaudePaths(homeDirectory: homeDirectory, environment: environment)
-      .applicationSupportDirectory
+      ApplicationPaths(homeDirectory: homeDirectory).applicationSupportDirectory
     let libraryService = PetLibraryService(
       paths: PetLibraryPaths(applicationSupportDirectory: applicationSupportDirectory))
 
@@ -33,12 +33,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
       petController?.requestRefresh()
     }
     let settingsModel = SettingsModel(petLibrary: petLibraryModel)
+    let runtimeHealth = ApplicationRuntimeHealth()
     let settingsWindowController = SettingsWindowController(model: settingsModel)
     self.settingsWindowController = settingsWindowController
     petController = ApplicationPetController(
       service: libraryService,
       overlayController: overlayController,
-      settingsModel: settingsModel
+      settingsModel: settingsModel,
+      runtimeHealth: runtimeHealth
     )
     self.petController = petController
 
@@ -60,11 +62,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuController: statusMenuController,
         overlayController: overlayController,
         homeDirectory: homeDirectory,
-        environment: environment
+        environment: environment,
+        cliExecutableURL: ApplicationPaths.companionCLIURL(
+          appExecutableURL: Bundle.main.executableURL
+            ?? URL(fileURLWithPath: CommandLine.arguments[0])
+        ),
+        runtimeHealth: runtimeHealth
       )
       try taskController.start()
       self.taskController = taskController
     } catch {
+      runtimeHealth.recordTaskControllerStartFailure()
       statusMenuController.update(representative: nil)
     }
     petController?.start()

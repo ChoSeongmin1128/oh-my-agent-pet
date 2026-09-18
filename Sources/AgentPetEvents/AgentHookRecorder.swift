@@ -16,6 +16,7 @@ public enum AgentHookRecorderError: Error, Equatable, Sendable {
 
 public struct AgentHookRecorder: Sendable {
   public static let maximumInputBytes = 8 * 1_024 * 1_024
+  public static let maximumEventLogBytes = 8 * 1_024 * 1_024
 
   public let provider: AgentHookProvider
   public let eventsURL: URL
@@ -83,6 +84,36 @@ public struct AgentHookRecorder: Sendable {
       throw AgentHookRecorderError.storageUnavailable
     }
 
+    let lockURL = directory.appendingPathComponent(".events.lock")
+    let lockDescriptor = lockURL.withUnsafeFileSystemRepresentation { path -> Int32 in
+      guard let path else { return -1 }
+      return Darwin.open(
+        path,
+        O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC,
+        S_IRUSR | S_IWUSR
+      )
+    }
+    guard lockDescriptor >= 0 else {
+      if errno == ELOOP {
+        throw AgentHookRecorderError.unsafeStorageTarget
+      }
+      throw AgentHookRecorderError.storageUnavailable
+    }
+    defer {
+      flock(lockDescriptor, LOCK_UN)
+      Darwin.close(lockDescriptor)
+    }
+    var lockStatus = stat()
+    guard fstat(lockDescriptor, &lockStatus) == 0,
+      lockStatus.st_mode & S_IFMT == S_IFREG,
+      fchmod(lockDescriptor, S_IRUSR | S_IWUSR) == 0,
+      flock(lockDescriptor, LOCK_EX) == 0
+    else {
+      throw AgentHookRecorderError.unsafeStorageTarget
+    }
+
+    try rotateIfNeeded(in: directory, incomingBytes: data.count)
+
     let descriptor = eventsURL.withUnsafeFileSystemRepresentation { path -> Int32 in
       guard let path else { return -1 }
       return Darwin.open(
@@ -109,11 +140,66 @@ public struct AgentHookRecorder: Sendable {
       throw AgentHookRecorderError.storageUnavailable
     }
 
-    let written = data.withUnsafeBytes { bytes -> Int in
-      guard let baseAddress = bytes.baseAddress else { return 0 }
-      return Darwin.write(descriptor, baseAddress, bytes.count)
+    guard writeAll(data, to: descriptor) else { throw AgentHookRecorderError.partialWrite }
+  }
+
+  private func rotateIfNeeded(in directory: URL, incomingBytes: Int) throws {
+    guard FileManager.default.fileExists(atPath: eventsURL.path) else { return }
+    var fileStatus = stat()
+    let statusResult = eventsURL.withUnsafeFileSystemRepresentation { path in
+      guard let path else { return Int32(-1) }
+      return lstat(path, &fileStatus)
     }
-    guard written == data.count else { throw AgentHookRecorderError.partialWrite }
+    guard statusResult == 0 else {
+      throw AgentHookRecorderError.storageUnavailable
+    }
+    guard fileStatus.st_mode & S_IFMT == S_IFREG else {
+      throw AgentHookRecorderError.unsafeStorageTarget
+    }
+    guard Int(fileStatus.st_size) + incomingBytes > Self.maximumEventLogBytes else { return }
+
+    let rotatedURL = directory.appendingPathComponent("events.ndjson.1")
+    do {
+      if FileManager.default.fileExists(atPath: rotatedURL.path) {
+        var rotatedStatus = stat()
+        let result = rotatedURL.withUnsafeFileSystemRepresentation { path -> Int32 in
+          guard let path else { return -1 }
+          return lstat(path, &rotatedStatus)
+        }
+        guard result == 0, rotatedStatus.st_mode & S_IFMT == S_IFREG else {
+          throw AgentHookRecorderError.unsafeStorageTarget
+        }
+        try FileManager.default.removeItem(at: rotatedURL)
+      }
+      try FileManager.default.moveItem(at: eventsURL, to: rotatedURL)
+    } catch let error as AgentHookRecorderError {
+      throw error
+    } catch {
+      throw AgentHookRecorderError.storageUnavailable
+    }
+  }
+
+  private func writeAll(_ data: Data, to descriptor: Int32) -> Bool {
+    data.withUnsafeBytes { bytes in
+      guard let baseAddress = bytes.baseAddress else { return data.isEmpty }
+      var offset = 0
+      while offset < bytes.count {
+        let written = Darwin.write(
+          descriptor,
+          baseAddress.advanced(by: offset),
+          bytes.count - offset
+        )
+        if written > 0 {
+          offset += written
+          continue
+        }
+        if written < 0, errno == EINTR {
+          continue
+        }
+        return false
+      }
+      return true
+    }
   }
 }
 

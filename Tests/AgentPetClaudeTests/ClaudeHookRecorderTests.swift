@@ -1,4 +1,5 @@
 import AgentPetClaude
+import AgentPetEvents
 import Foundation
 import XCTest
 
@@ -141,6 +142,58 @@ final class ClaudeHookRecorderTests: XCTestCase {
 
     XCTAssertEqual(events.count, 50)
     XCTAssertEqual(Set(events.map(\.sessionID)).count, 50)
+  }
+
+  func testEventLogRotatesUnderExclusiveWriterLock() throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let recorder = ClaudeHookRecorder(applicationSupportDirectory: directory)
+    try Data(repeating: 0x20, count: ClaudeHookRecorder.maximumEventLogBytes)
+      .write(to: recorder.eventsURL)
+    let payload = Data(
+      #"{"hook_event_name":"Stop","session_id":"rotated","cwd":"/tmp"}"#.utf8
+    )
+
+    _ = try recorder.record(input: payload)
+
+    let rotatedURL = directory.appendingPathComponent("events.ndjson.1")
+    XCTAssertEqual(
+      try Data(contentsOf: rotatedURL).count,
+      ClaudeHookRecorder.maximumEventLogBytes
+    )
+    let current = try String(contentsOf: recorder.eventsURL, encoding: .utf8)
+    XCTAssertTrue(current.contains(#""session_id":"rotated""#))
+    let lockAttributes = try FileManager.default.attributesOfItem(
+      atPath: directory.appendingPathComponent(".events.lock").path
+    )
+    XCTAssertEqual(
+      (lockAttributes[.posixPermissions] as? NSNumber)?.uint16Value,
+      0o600
+    )
+  }
+
+  func testRotationRefusesUnexpectedArchiveDirectory() throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let recorder = ClaudeHookRecorder(applicationSupportDirectory: directory)
+    try Data(repeating: 0x20, count: ClaudeHookRecorder.maximumEventLogBytes)
+      .write(to: recorder.eventsURL)
+    let archiveDirectory = directory.appendingPathComponent("events.ndjson.1", isDirectory: true)
+    try FileManager.default.createDirectory(at: archiveDirectory, withIntermediateDirectories: true)
+    try Data("keep".utf8).write(to: archiveDirectory.appendingPathComponent("sentinel"))
+    let payload = Data(
+      #"{"hook_event_name":"Stop","session_id":"rotate-safe","cwd":"/tmp"}"#.utf8
+    )
+
+    XCTAssertThrowsError(try recorder.record(input: payload)) {
+      XCTAssertEqual($0 as? AgentHookRecorderError, .unsafeStorageTarget)
+    }
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: archiveDirectory.appendingPathComponent("sentinel").path)
+    )
   }
 
   private func temporaryDirectory() -> URL {

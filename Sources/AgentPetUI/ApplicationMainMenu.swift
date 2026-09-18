@@ -1,3 +1,4 @@
+import AgentPetCore
 import AppKit
 
 // An `LSUIElement` app shows no menu bar, but AppKit still routes Command shortcuts such as
@@ -9,7 +10,7 @@ public enum ApplicationMainMenu {
   public static func make(settingsTarget: AnyObject, settingsAction: Selector) -> NSMenu {
     let mainMenu = NSMenu()
 
-    let applicationMenu = NSMenu(title: "Oh My Agent Pet")
+    let applicationMenu = NSMenu(title: AgentPetProduct.name)
     let settings = NSMenuItem(
       title: "Settings…", action: settingsAction, keyEquivalent: settingsKeyEquivalent)
     settings.target = settingsTarget
@@ -17,7 +18,7 @@ public enum ApplicationMainMenu {
     applicationMenu.addItem(.separator())
     applicationMenu.addItem(
       NSMenuItem(
-        title: "Quit Oh My Agent Pet",
+        title: "Quit \(AgentPetProduct.name)",
         action: #selector(NSApplication.terminate(_:)),
         keyEquivalent: "q"
       )

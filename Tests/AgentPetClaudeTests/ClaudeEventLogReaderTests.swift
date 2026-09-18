@@ -3,6 +3,47 @@ import Foundation
 import XCTest
 
 final class ClaudeEventLogReaderTests: XCTestCase {
+  func testInitialReadReplaysRotatedArchiveBeforeCurrentLog() throws {
+    let directory = temporaryDirectory()
+    let current = directory.appendingPathComponent("events.ndjson")
+    let rotated = directory.appendingPathComponent("events.ndjson.1")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try eventLine(id: 1, sessionID: "older").write(to: rotated)
+    try eventLine(id: 2, sessionID: "current").write(to: current)
+    var reader = ClaudeEventLogReader(eventsURL: current)
+
+    let first = try reader.readAvailable()
+    let second = try reader.readAvailable()
+
+    XCTAssertEqual(first.events.map(\.sessionID), ["older", "current"])
+    XCTAssertTrue(first.reachedEnd)
+    XCTAssertTrue(second.events.isEmpty, "rotated archive is replayed only once")
+  }
+
+  func testReplacementReplaysMatchingRotatedArchiveBeforeNewFileForReducerRebuild() throws {
+    let directory = temporaryDirectory()
+    let current = directory.appendingPathComponent("events.ndjson")
+    let rotated = directory.appendingPathComponent("events.ndjson.1")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let first = try eventLine(id: 1, sessionID: "first")
+    let missed = try eventLine(id: 2, sessionID: "missed")
+    try first.write(to: current)
+    var reader = ClaudeEventLogReader(eventsURL: current)
+    XCTAssertEqual(try reader.readAvailable().events.map(\.sessionID), ["first"])
+
+    let handle = try FileHandle(forWritingTo: current)
+    try handle.seekToEnd()
+    try handle.write(contentsOf: missed)
+    try handle.close()
+    try FileManager.default.moveItem(at: current, to: rotated)
+    try eventLine(id: 3, sessionID: "new").write(to: current)
+
+    let batch = try reader.readAvailable()
+
+    XCTAssertTrue(batch.didReset)
+    XCTAssertEqual(batch.events.map(\.sessionID), ["first", "missed", "new"])
+  }
+
   func testMissingFileIsAnEmptyCompleteBatch() throws {
     var reader = ClaudeEventLogReader(
       eventsURL: temporaryDirectory().appendingPathComponent("events"))
@@ -165,5 +206,27 @@ final class ClaudeEventLogReaderTests: XCTestCase {
     try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     addTeardownBlock { try? FileManager.default.removeItem(at: url) }
     return url
+  }
+
+  private func eventLine(id: Int, sessionID: String) throws -> Data {
+    let event = StoredClaudeHookEvent(
+      recordID: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
+      receivedAtMilliseconds: Int64(id * 1_000),
+      provider: .claude,
+      hookEventName: "Stop",
+      sessionID: sessionID,
+      turnID: nil,
+      cwd: "/tmp",
+      source: nil,
+      notificationType: nil,
+      toolName: nil,
+      clientSurface: nil,
+      applicationBundleIdentifier: nil,
+      terminalSessionID: nil,
+      tty: nil
+    )
+    var data = try JSONEncoder().encode(event)
+    data.append(0x0A)
+    return data
   }
 }

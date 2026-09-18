@@ -57,7 +57,7 @@ struct CodexHookOverlayReducer: Sendable {
   }
 
   func applying(to snapshot: AgentTaskSnapshot) -> AgentTaskSnapshot {
-    guard snapshot.identity.provider.rawValue == "codex",
+    guard snapshot.identity.provider == .codex,
       let overlay = sessions[snapshot.identity.taskID.lowercased()],
       overlay.navigationTarget != nil || overlay.waiting.requiresUserIntervention
     else {

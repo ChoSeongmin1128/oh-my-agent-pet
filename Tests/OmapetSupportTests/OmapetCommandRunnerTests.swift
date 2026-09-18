@@ -46,15 +46,61 @@ final class OmapetCommandRunnerTests: XCTestCase {
     XCTAssertEqual(object["provider"] as? String, "claude")
   }
 
-  func testDoctorReportsOnlyImplementedRuntimeCheck() throws {
-    let result = OmapetCommandRunner().run(arguments: ["doctor", "--json"])
+  func testDoctorReportsConnectionPetAndEventLogHealthWithoutMutatingFreshHome() throws {
+    let fixture = try CLIFixture()
+    defer { fixture.remove() }
+    let result = fixture.runner.run(arguments: ["doctor", "--json"])
     let object = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(result.standardOutput.utf8)) as? [String: Any]
     )
-    let checks = try XCTUnwrap(object["checks"] as? [[String: String]])
+    let checks = try XCTUnwrap(object["checks"] as? [[String: Any]])
+    let byID = Dictionary(
+      uniqueKeysWithValues: checks.compactMap { check -> (String, [String: Any])? in
+        guard let id = check["id"] as? String else { return nil }
+        return (id, check)
+      })
 
     XCTAssertEqual(result.exitCode, 0)
-    XCTAssertEqual(checks, [["id": "runtime", "status": "pass"]])
+    XCTAssertEqual(object["status"] as? String, "warning")
+    XCTAssertEqual(byID["runtime"]?["status"] as? String, "pass")
+    XCTAssertEqual(byID["claude_connection"]?["detail"] as? String, "not_configured")
+    XCTAssertEqual(byID["codex_connection"]?["detail"] as? String, "not_configured")
+    XCTAssertEqual(byID["pet_selection"]?["status"] as? String, "pass")
+    XCTAssertEqual(byID["event_log"]?["detail"] as? String, "not_created")
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: fixture.home
+          .appendingPathComponent("Library/Application Support/Oh My Agent Pet").path
+      ),
+      "doctor must be read-only on a fresh home"
+    )
+  }
+
+  func testDoctorFailsForUnsafeEventLogTarget() throws {
+    let fixture = try CLIFixture()
+    defer { fixture.remove() }
+    let support = fixture.home.appendingPathComponent(
+      "Library/Application Support/Oh My Agent Pet",
+      isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    let target = support.appendingPathComponent("target")
+    try Data().write(to: target)
+    try FileManager.default.createSymbolicLink(
+      at: support.appendingPathComponent("events.ndjson"),
+      withDestinationURL: target
+    )
+
+    let result = fixture.runner.run(arguments: ["doctor", "--json"])
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(result.standardOutput.utf8)) as? [String: Any]
+    )
+    let checks = try XCTUnwrap(object["checks"] as? [[String: Any]])
+    let eventLog = try XCTUnwrap(checks.first { $0["id"] as? String == "event_log" })
+
+    XCTAssertEqual(result.exitCode, 74)
+    XCTAssertEqual(object["status"] as? String, "fail")
+    XCTAssertEqual(eventLog["detail"] as? String, "unsafe_type")
   }
 
   func testUnknownCommandUsesUsageExitCode() {

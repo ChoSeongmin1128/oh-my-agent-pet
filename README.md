@@ -79,9 +79,10 @@ omapet setup disconnect claude
 omapet setup connect codex --dry-run --json
 omapet setup connect codex
 omapet setup disconnect codex
+omapet doctor --json
 ```
 
-`--dry-run`은 현재 설정과 예상 변경을 확인하고 파일을 수정하지 않습니다. 연결과 해제는 Oh My Agent Pet marker가 있는 hook만 대상으로 하며 다른 hook과 설정을 보존합니다. Codex 연결은 현재 설치된 Codex가 계산한 각 hook의 정확한 해시만 신뢰하고, 연결 해제 시 해당 신뢰 항목만 정리합니다.
+`--dry-run`은 현재 설정과 예상 변경을 확인하고 파일을 수정하지 않습니다. 연결과 해제는 Oh My Agent Pet marker가 있는 hook만 대상으로 하며 다른 hook과 설정을 보존합니다. Codex 연결은 현재 설치된 Codex가 계산한 각 hook의 정확한 해시만 신뢰하고, 연결 해제 시 해당 신뢰 항목만 정리합니다. `doctor`는 설정을 변경하지 않고 Claude·Codex 연결 상태, 저장된 펫 선택과 로컬 이벤트 파일의 기본 안전 상태를 검사합니다.
 
 펫 라이브러리는 설정 창과 같은 서비스를 CLI로도 제공합니다.
 

@@ -1,4 +1,5 @@
-import Darwin
+import AgentPetCore
+import AgentPetInfrastructure
 import Foundation
 
 public enum CodexSetupServiceError: Error, Equatable, Sendable {
@@ -51,9 +52,9 @@ public struct CodexSetupService: Sendable {
   public let executableURL: URL
 
   private let configuration = CodexHookConfiguration()
+  private let fileStore: SecureConfigurationFileStore
   private let trustManager: any CodexHookTrustManaging
   private let cwd: URL
-  private let now: @Sendable () -> Date
   private let beforeWrite: @Sendable () -> Void
 
   public init(
@@ -93,8 +94,8 @@ public struct CodexSetupService: Sendable {
     self.hooksURL = hooksURL
     self.executableURL = executableURL.resolvingSymlinksInPath().standardizedFileURL
     self.cwd = cwd
+    fileStore = SecureConfigurationFileStore(url: hooksURL, now: now)
     self.trustManager = trustManager
-    self.now = now
     self.beforeWrite = beforeWrite
   }
 
@@ -127,7 +128,11 @@ public struct CodexSetupService: Sendable {
     case .connected, .codexUnavailable:
       resolved = configured
     }
-    return CodexSetupStatus(provider: "codex", status: resolved, hooksPath: hooksURL.path)
+    return CodexSetupStatus(
+      provider: ProviderIdentifier.codex.rawValue,
+      status: resolved,
+      hooksPath: hooksURL.path
+    )
   }
 
   public func connect(dryRun: Bool) throws -> CodexSetupChange {
@@ -144,7 +149,7 @@ public struct CodexSetupService: Sendable {
     let configChanged = current != installed
     if dryRun {
       return CodexSetupChange(
-        provider: "codex",
+        provider: ProviderIdentifier.codex.rawValue,
         action: "connect",
         status: .connected,
         changed: configChanged,
@@ -175,7 +180,7 @@ public struct CodexSetupService: Sendable {
         replacing: replacedKeys
       )
       return CodexSetupChange(
-        provider: "codex",
+        provider: ProviderIdentifier.codex.rawValue,
         action: "connect",
         status: .connected,
         changed: configChanged || trust.changed,
@@ -201,7 +206,7 @@ public struct CodexSetupService: Sendable {
     let configChanged = current != removed
     if dryRun || !configChanged {
       return CodexSetupChange(
-        provider: "codex",
+        provider: ProviderIdentifier.codex.rawValue,
         action: "disconnect",
         status: .notConfigured,
         changed: configChanged,
@@ -224,7 +229,7 @@ public struct CodexSetupService: Sendable {
     do {
       _ = try trustManager.removeTrustedHookKeys(trustedKeys)
       return CodexSetupChange(
-        provider: "codex",
+        provider: ProviderIdentifier.codex.rawValue,
         action: "disconnect",
         status: .notConfigured,
         changed: true,
@@ -242,16 +247,10 @@ public struct CodexSetupService: Sendable {
   }
 
   private func readHooks() throws -> Data {
-    guard !isSymbolicLink(hooksURL) else {
-      throw CodexSetupServiceError.unsafeHooksTarget
-    }
-    guard FileManager.default.fileExists(atPath: hooksURL.path) else {
-      return Data("{}".utf8)
-    }
     do {
-      return try Data(contentsOf: hooksURL)
-    } catch {
-      throw CodexSetupServiceError.readFailed
+      return try fileStore.read(defaultData: Data("{}".utf8))
+    } catch let error as SecureConfigurationFileError {
+      throw mapFileError(error)
     }
   }
 
@@ -259,51 +258,19 @@ public struct CodexSetupService: Sendable {
     _ updated: Data,
     replacing current: Data,
     removeIfEmpty: Bool
-  ) throws -> CodexFileMutation? {
+  ) throws -> SecureConfigurationMutation? {
     guard updated != current else { return nil }
     beforeWrite()
-    guard try readHooks() == current else {
-      throw CodexSetupServiceError.concurrentModification
-    }
-
-    let fileManager = FileManager.default
-    let existed = fileManager.fileExists(atPath: hooksURL.path)
     do {
-      try fileManager.createDirectory(
-        at: hooksURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true,
-        attributes: [.posixPermissions: NSNumber(value: UInt16(0o700))]
+      return try fileStore.replace(
+        with: updated,
+        expected: current,
+        defaultData: Data("{}".utf8),
+        removeInsteadOfWrite: removeIfEmpty && isEmptyRoot(updated)
       )
-    } catch {
-      throw CodexSetupServiceError.writeFailed
+    } catch let error as SecureConfigurationFileError {
+      throw mapFileError(error)
     }
-
-    let backup: URL?
-    if existed {
-      backup = backupURL()
-      do {
-        try fileManager.copyItem(at: hooksURL, to: backup!)
-      } catch {
-        throw CodexSetupServiceError.backupFailed
-      }
-    } else {
-      backup = nil
-    }
-
-    do {
-      if removeIfEmpty, try isEmptyRoot(updated) {
-        try fileManager.removeItem(at: hooksURL)
-      } else {
-        try SecureCodexFile.write(
-          updated,
-          to: hooksURL,
-          permissions: currentPermissions() ?? 0o600
-        )
-      }
-    } catch {
-      throw CodexSetupServiceError.writeFailed
-    }
-    return CodexFileMutation(backupURL: backup, originalExisted: existed)
   }
 
   private func isEmptyRoot(_ data: Data) throws -> Bool {
@@ -313,57 +280,13 @@ public struct CodexSetupService: Sendable {
     return root.isEmpty
   }
 
-  private func rollbackIfNeeded(_ mutation: CodexFileMutation?, original: Data) throws {
-    guard let mutation else { return }
+  private func rollbackIfNeeded(_ mutation: SecureConfigurationMutation?, original: Data) throws {
     do {
-      if mutation.originalExisted {
-        try SecureCodexFile.write(
-          original,
-          to: hooksURL,
-          permissions: currentPermissions() ?? 0o600
-        )
-      } else if FileManager.default.fileExists(atPath: hooksURL.path) {
-        try FileManager.default.removeItem(at: hooksURL)
-      }
-    } catch {
+      try fileStore.rollback(mutation, original: original)
+    } catch let error as SecureConfigurationFileError {
+      _ = error
       throw CodexSetupServiceError.rollbackFailed
     }
-  }
-
-  private func backupURL() -> URL {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-    let baseName = "hooks.json.omapet-backup-\(formatter.string(from: now()))"
-    let directory = hooksURL.deletingLastPathComponent()
-    var candidate = directory.appendingPathComponent(baseName)
-    var suffix = 1
-    while FileManager.default.fileExists(atPath: candidate.path) {
-      candidate = directory.appendingPathComponent("\(baseName)-\(suffix)")
-      suffix += 1
-    }
-    return candidate
-  }
-
-  private func currentPermissions() -> mode_t? {
-    var fileStatus = stat()
-    guard
-      hooksURL.withUnsafeFileSystemRepresentation({ path in
-        guard let path else { return -1 }
-        return lstat(path, &fileStatus)
-      }) == 0
-    else { return nil }
-    return fileStatus.st_mode & 0o777
-  }
-
-  private func isSymbolicLink(_ url: URL) -> Bool {
-    var fileStatus = stat()
-    let result = url.withUnsafeFileSystemRepresentation { path in
-      guard let path else { return Int32(-1) }
-      return lstat(path, &fileStatus)
-    }
-    return result == 0 && fileStatus.st_mode & S_IFMT == S_IFLNK
   }
 
   private func mapConfigurationError<T>(_ operation: () throws -> T) throws -> T {
@@ -373,59 +296,14 @@ public struct CodexSetupService: Sendable {
       throw CodexSetupServiceError.configuration(error)
     }
   }
-}
 
-private struct CodexFileMutation {
-  let backupURL: URL?
-  let originalExisted: Bool
-}
-
-private enum SecureCodexFile {
-  static func write(_ data: Data, to url: URL, permissions: mode_t) throws {
-    let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(
-      ".\(url.lastPathComponent).omapet-\(UUID().uuidString).tmp"
-    )
-    let descriptor = temporaryURL.withUnsafeFileSystemRepresentation { path -> Int32 in
-      guard let path else { return -1 }
-      return Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, permissions)
+  private func mapFileError(_ error: SecureConfigurationFileError) -> CodexSetupServiceError {
+    switch error {
+    case .unsafeTarget: .unsafeHooksTarget
+    case .readFailed: .readFailed
+    case .writeFailed: .writeFailed
+    case .backupFailed: .backupFailed
+    case .concurrentModification: .concurrentModification
     }
-    guard descriptor >= 0 else { throw CodexSetupServiceError.writeFailed }
-
-    var writeSucceeded = false
-    defer {
-      Darwin.close(descriptor)
-      if !writeSucceeded { try? FileManager.default.removeItem(at: temporaryURL) }
-    }
-
-    try data.withUnsafeBytes { bytes in
-      guard let baseAddress = bytes.baseAddress else { return }
-      var written = 0
-      while written < bytes.count {
-        let count = Darwin.write(
-          descriptor,
-          baseAddress.advanced(by: written),
-          bytes.count - written
-        )
-        if count > 0 {
-          written += count
-        } else if count == -1, errno == EINTR {
-          continue
-        } else {
-          throw CodexSetupServiceError.writeFailed
-        }
-      }
-    }
-    guard fchmod(descriptor, permissions) == 0, fsync(descriptor) == 0 else {
-      throw CodexSetupServiceError.writeFailed
-    }
-
-    let renamed = temporaryURL.withUnsafeFileSystemRepresentation { sourcePath in
-      url.withUnsafeFileSystemRepresentation { destinationPath in
-        guard let sourcePath, let destinationPath else { return Int32(-1) }
-        return Darwin.rename(sourcePath, destinationPath)
-      }
-    }
-    guard renamed == 0 else { throw CodexSetupServiceError.writeFailed }
-    writeSucceeded = true
   }
 }

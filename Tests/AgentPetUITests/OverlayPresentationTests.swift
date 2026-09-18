@@ -54,6 +54,30 @@ final class OverlayPresentationTests: XCTestCase {
     XCTAssertFalse(presentation.canToggleExpansion)
   }
 
+  func testProviderLabelsFollowConnectedProvidersNotOnlyTaskProviders() throws {
+    let claude = task(id: "only", provider: "claude", prompt: 10)
+    let representative = try XCTUnwrap(RepresentativeTaskSelector().select(from: [claude]))
+    let presenter = OverlayPresenter()
+
+    let oneConnected = presenter.makePresentation(
+      tasks: [claude],
+      representative: representative,
+      savedMode: .one,
+      isTemporarilyExpanded: false,
+      connectedProviderCount: 1
+    )
+    let twoConnected = presenter.makePresentation(
+      tasks: [claude],
+      representative: representative,
+      savedMode: .one,
+      isTemporarilyExpanded: false,
+      connectedProviderCount: 2
+    )
+
+    XCTAssertNil(oneConnected.cards.first?.providerLabel)
+    XCTAssertEqual(twoConnected.cards.first?.providerLabel, "Claude")
+  }
+
   func testNoCardModeUsesSinglePetCompletionDotAndTemporaryExpansion() {
     let completed = task(
       id: "done",

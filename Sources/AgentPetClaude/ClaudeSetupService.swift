@@ -1,4 +1,5 @@
-import Darwin
+import AgentPetCore
+import AgentPetInfrastructure
 import Foundation
 
 public enum ClaudeSetupServiceError: Error, Equatable, Sendable {
@@ -46,7 +47,7 @@ public struct ClaudeSetupService: Sendable {
   public let executableURL: URL
 
   private let configuration = ClaudeHookConfiguration()
-  private let now: @Sendable () -> Date
+  private let fileStore: SecureConfigurationFileStore
   private let beforeWrite: @Sendable () -> Void
 
   public init(
@@ -77,14 +78,14 @@ public struct ClaudeSetupService: Sendable {
         environment: environment
       ).settingsURL
     self.executableURL = executableURL.resolvingSymlinksInPath().standardizedFileURL
-    self.now = now
+    fileStore = SecureConfigurationFileStore(url: settingsURL, now: now)
     self.beforeWrite = beforeWrite
   }
 
   public func status() throws -> ClaudeSetupStatus {
     let data = try readSettings()
     return ClaudeSetupStatus(
-      provider: "claude",
+      provider: ProviderIdentifier.claude.rawValue,
       status: try mapConfigurationError {
         try configuration.installationState(in: data, executableURL: executableURL)
       },
@@ -106,7 +107,7 @@ public struct ClaudeSetupService: Sendable {
     let changed = current != installed
     let backup = try apply(installed, replacing: current, dryRun: dryRun)
     return ClaudeSetupChange(
-      provider: "claude",
+      provider: ProviderIdentifier.claude.rawValue,
       action: "connect",
       status: status,
       changed: changed,
@@ -123,7 +124,7 @@ public struct ClaudeSetupService: Sendable {
     let changed = current != removed
     let backup = try apply(removed, replacing: current, dryRun: dryRun)
     return ClaudeSetupChange(
-      provider: "claude",
+      provider: ProviderIdentifier.claude.rawValue,
       action: "disconnect",
       status: .notConfigured,
       changed: changed,
@@ -133,16 +134,10 @@ public struct ClaudeSetupService: Sendable {
   }
 
   private func readSettings() throws -> Data {
-    guard !isSymbolicLink(settingsURL) else {
-      throw ClaudeSetupServiceError.unsafeSettingsTarget
-    }
-    guard FileManager.default.fileExists(atPath: settingsURL.path) else {
-      return Data("{}".utf8)
-    }
     do {
-      return try Data(contentsOf: settingsURL)
-    } catch {
-      throw ClaudeSetupServiceError.readFailed
+      return try fileStore.read(defaultData: Data("{}".utf8))
+    } catch let error as SecureConfigurationFileError {
+      throw mapFileError(error)
     }
   }
 
@@ -152,79 +147,16 @@ public struct ClaudeSetupService: Sendable {
     }
 
     beforeWrite()
-    guard try readSettings() == current else {
-      throw ClaudeSetupServiceError.concurrentModification
-    }
-
-    let fileManager = FileManager.default
-    let existed = fileManager.fileExists(atPath: settingsURL.path)
     do {
-      try fileManager.createDirectory(
-        at: settingsURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true,
-        attributes: [.posixPermissions: NSNumber(value: UInt16(0o700))]
+      return try fileStore.replace(
+        with: updated,
+        expected: current,
+        defaultData: Data("{}".utf8)
       )
-    } catch {
-      throw ClaudeSetupServiceError.writeFailed
+      .flatMap(\.backupURL)
+    } catch let error as SecureConfigurationFileError {
+      throw mapFileError(error)
     }
-
-    let backup: URL?
-    if existed {
-      backup = backupURL()
-      do {
-        try fileManager.copyItem(at: settingsURL, to: backup!)
-      } catch {
-        throw ClaudeSetupServiceError.backupFailed
-      }
-    } else {
-      backup = nil
-    }
-
-    do {
-      try SecureAtomicFile.write(
-        updated, to: settingsURL, permissions: currentPermissions() ?? 0o600)
-    } catch {
-      throw ClaudeSetupServiceError.writeFailed
-    }
-    return backup
-  }
-
-  private func backupURL() -> URL {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-    let baseName = "settings.json.omapet-backup-\(formatter.string(from: now()))"
-    let directory = settingsURL.deletingLastPathComponent()
-    var candidate = directory.appendingPathComponent(baseName)
-    var suffix = 1
-    while FileManager.default.fileExists(atPath: candidate.path) {
-      candidate = directory.appendingPathComponent("\(baseName)-\(suffix)")
-      suffix += 1
-    }
-    return candidate
-  }
-
-  private func currentPermissions() -> mode_t? {
-    var fileStatus = stat()
-    guard
-      settingsURL.withUnsafeFileSystemRepresentation({ path in
-        guard let path else { return -1 }
-        return lstat(path, &fileStatus)
-      }) == 0
-    else {
-      return nil
-    }
-    return fileStatus.st_mode & 0o777
-  }
-
-  private func isSymbolicLink(_ url: URL) -> Bool {
-    var fileStatus = stat()
-    let result = url.withUnsafeFileSystemRepresentation { path in
-      guard let path else { return Int32(-1) }
-      return lstat(path, &fileStatus)
-    }
-    return result == 0 && fileStatus.st_mode & S_IFMT == S_IFLNK
   }
 
   private func mapConfigurationError<T>(_ operation: () throws -> T) throws -> T {
@@ -235,49 +167,13 @@ public struct ClaudeSetupService: Sendable {
     }
   }
 
-}
-
-private enum SecureAtomicFile {
-  static func write(_ data: Data, to url: URL, permissions: mode_t) throws {
-    let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(
-      ".\(url.lastPathComponent).omapet-\(UUID().uuidString).tmp"
-    )
-    let descriptor = temporaryURL.withUnsafeFileSystemRepresentation { path -> Int32 in
-      guard let path else { return -1 }
-      return Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, permissions)
+  private func mapFileError(_ error: SecureConfigurationFileError) -> ClaudeSetupServiceError {
+    switch error {
+    case .unsafeTarget: .unsafeSettingsTarget
+    case .readFailed: .readFailed
+    case .writeFailed: .writeFailed
+    case .backupFailed: .backupFailed
+    case .concurrentModification: .concurrentModification
     }
-    guard descriptor >= 0 else {
-      throw ClaudeSetupServiceError.writeFailed
-    }
-
-    var writeSucceeded = false
-    defer {
-      Darwin.close(descriptor)
-      if !writeSucceeded {
-        try? FileManager.default.removeItem(at: temporaryURL)
-      }
-    }
-
-    let written = data.withUnsafeBytes { bytes -> Int in
-      guard let address = bytes.baseAddress else { return 0 }
-      return Darwin.write(descriptor, address, bytes.count)
-    }
-    guard written == data.count,
-      fchmod(descriptor, permissions) == 0,
-      fsync(descriptor) == 0
-    else {
-      throw ClaudeSetupServiceError.writeFailed
-    }
-
-    let renameResult = temporaryURL.withUnsafeFileSystemRepresentation { temporaryPath in
-      url.withUnsafeFileSystemRepresentation { destinationPath in
-        guard let temporaryPath, let destinationPath else { return Int32(-1) }
-        return Darwin.rename(temporaryPath, destinationPath)
-      }
-    }
-    guard renameResult == 0 else {
-      throw ClaudeSetupServiceError.writeFailed
-    }
-    writeSucceeded = true
   }
 }

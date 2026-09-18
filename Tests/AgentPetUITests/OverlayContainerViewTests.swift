@@ -6,6 +6,47 @@ import XCTest
 
 @MainActor
 final class OverlayContainerViewTests: XCTestCase {
+  func testPureGeometryKeepsLayoutMathIndependentFromViews() {
+    let metrics = OverlayGeometryMetrics(
+      petSize: CGSize(width: 80, height: 80),
+      cardWidth: 260,
+      cardHeight: 60,
+      petCardSpacing: 10,
+      disclosureHeight: 16,
+      depthLayerOffset: 4
+    )
+
+    let vertical = OverlayGeometry.resolve(
+      OverlayGeometryInput(
+        layout: .vertical,
+        isPetHidden: false,
+        hasCards: true,
+        cardsHeight: 60,
+        depthLayerCount: 2,
+        showsDisclosure: false
+      ),
+      metrics: metrics
+    )
+    let horizontal = OverlayGeometry.resolve(
+      OverlayGeometryInput(
+        layout: .horizontal,
+        isPetHidden: false,
+        hasCards: true,
+        cardsHeight: 60,
+        depthLayerCount: 2,
+        showsDisclosure: false
+      ),
+      metrics: metrics
+    )
+
+    XCTAssertEqual(vertical.preferredSize, CGSize(width: 260, height: 158))
+    XCTAssertEqual(vertical.petFrame.origin, CGPoint(x: 90, y: 78))
+    XCTAssertEqual(vertical.cardsFrame.origin, CGPoint(x: 0, y: 8))
+    XCTAssertEqual(horizontal.preferredSize, CGSize(width: 350, height: 80))
+    XCTAssertEqual(horizontal.petFrame.origin, .zero)
+    XCTAssertEqual(horizontal.cardsFrame.origin, CGPoint(x: 90, y: 8))
+  }
+
   func testPositionAnchorPreservesLegacyHorizontalAndVerticalPetLocation() {
     let anchor = NSPoint(x: 400, y: 300)
     let horizontalPetFrame = NSRect(origin: .zero, size: DesignTokens.petSize)

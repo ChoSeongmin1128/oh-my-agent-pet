@@ -26,6 +26,7 @@ public struct TaskIdentity: Codable, Hashable, Sendable {
 
   public var stableKey: String {
     [provider.rawValue, profileID, dataRoot, taskID, executionID, turnID]
-      .joined(separator: "\u{1F}")
+      .map { value in "\(value.utf8.count):\(value)" }
+      .joined()
   }
 }

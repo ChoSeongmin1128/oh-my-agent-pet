@@ -1,3 +1,4 @@
+import AgentPetCore
 import AppKit
 import SwiftUI
 
@@ -95,7 +96,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolb
     window.toolbarStyle = .preference
     window.level = .normal
     window.delegate = self
-    let toolbar = SettingsToolbar(identifier: "com.seongmin.OhMyAgentPet.settings")
+    let toolbar = SettingsToolbar(identifier: "\(AgentPetProduct.bundleIdentifier).settings")
     toolbar.delegate = self
     toolbar.allowsUserCustomization = false
     toolbar.displayMode = .iconAndLabel
@@ -110,7 +111,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolb
   }
 
   private static func windowTitle(for pane: SettingsPane) -> String {
-    "\(pane.title) — Oh My Agent Pet"
+    "\(pane.title) — \(AgentPetProduct.name)"
   }
 }
 

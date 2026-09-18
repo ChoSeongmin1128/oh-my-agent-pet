@@ -1,3 +1,4 @@
+import AgentPetCore
 import Foundation
 
 public struct ClaudePaths: Sendable {
@@ -10,10 +11,9 @@ public struct ClaudePaths: Sendable {
   public init(homeDirectory: URL, environment: [String: String]) {
     configRoot = Self.configRoot(homeDirectory: homeDirectory, environment: environment)
     settingsURL = configRoot.appendingPathComponent("settings.json")
-    applicationSupportDirectory =
-      homeDirectory
-      .appendingPathComponent("Library/Application Support/Oh My Agent Pet", isDirectory: true)
-    eventsURL = applicationSupportDirectory.appendingPathComponent("events.ndjson")
+    let applicationPaths = ApplicationPaths(homeDirectory: homeDirectory)
+    applicationSupportDirectory = applicationPaths.applicationSupportDirectory
+    eventsURL = applicationPaths.eventsURL
     desktopSessionsDirectory = homeDirectory.appendingPathComponent(
       "Library/Application Support/Claude/claude-code-sessions",
       isDirectory: true
